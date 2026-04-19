@@ -7,12 +7,11 @@ int main() {
 }
 
 
-// What libraries do I need ?
-
-
-// What interfaces do I need?
-
-
+// 1. Setup cmake to include all necessary dependencies and build executable for project
+// 2. Look at BLE and MQTT depedency to get good enough understanding of needs
+// 3. Look into std::threading and what the queue needs to look like
+// 4. Outline each of the classes in header files (given now what I know about ekf class)
+// 5. Outline each of the threads
 
 
 // Process 1 - Communication
