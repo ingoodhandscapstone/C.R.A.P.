@@ -33,8 +33,8 @@ const std::string MQTTWorker::TOPIC_SPO2_WRIST = "spo2/WRIST";
 
 
 bool MQTTWorker::initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
-                            std::queue<float> * flexSPO2ForwardMQTTQueue,
-                            std::queue<imuForceElement> * imuForceForwardMQTTQueue,
+                            std::queue<dataOutputElement> * flexSPO2ForwardMQTTQueue,
+                            std::queue<dataOutputElement> * imuForceForwardMQTTQueue,
                             std::mutex * mqttForwardCommandMutex,
                             std::mutex * flexSPO2ForwardMQTTMutex,
                             std::mutex * imuForceForwardMQTTMutex) {
@@ -46,6 +46,11 @@ bool MQTTWorker::initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
     this->imuForceForwardMQTTMutex = imuForceForwardMQTTMutex;
     
     // Set connect options
+    connect_opts.set_mqtt_version(MQTTVERSION_3_1_1);
+    connect_opts.set_clean_session(false);
+    connect_opts.set_connect_timeout(3000);
+    connect_opts.set_automatic_reconnect(false);
+
     // Set callback for client 
     cb = Callback(this);
     // Setup listeners
@@ -65,18 +70,24 @@ bool MQTTWorker::initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
 
 
 void MQTTWorker::run(){
+
+    while(true){
     // Checking connection attempt count
-        // Because reconnect is automatic so we need to check once limit has been hit 
-
-    
     // Check for publish fail flag 
-
     // Check subscription fail flag (really should only be set if reconnet occurs here)
+        {
+            std::lock_guard guard(callbackStateMutex);
+            if(subFailed || pubFailed || connectionAttemptCount >= MAX_RECONNECT_ATTEMPTS){
+                return; // Leave this to main for further handling 
+            }
 
-    // Check for messages from the relevant queues
+        }
 
-    // Attempt to publish them 
+        publishMessage(flexSPO2ForwardMQTTMutex, flexSPO2ForwardMQTTQueue);
+        publishMessage(imuForceForwardMQTTMutex, imuForceForwardMQTTQueue);
 
+    }
+   
 }
 
 void MQTTWorker::Callback::connection_lost(const std::string& cause){
@@ -195,4 +206,28 @@ void MQTTWorker::PublisherActionListener::on_failure(const mqtt::token& asyncAct
     }
 
     
+}
+
+
+void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<dataOutputElement> * elemQueue){
+    // Access mutex for queue
+    std::lock_guard guard(*queueMut);
+    // check empty
+    if(elemQueue->empty()){
+        return;
+    }
+
+    // Access element
+    dataOutputElement elem = elemQueue->front();
+    // Get topic 
+    mqtt::string_ref topic = getTopic(elem.id);
+    // Extract data from elem
+    mqtt::binary_ref data = elem.data;
+    // place into message to send
+    const mqtt::message messageToPub(topic, data);
+    mqtt::const_message_ptr messagePtr = std::make_shared<const mqtt::message>(messageToPub);
+
+    std::lock_guard guard(clientAccessMutex);
+    client.publish(messagePtr);
+
 }
