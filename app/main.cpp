@@ -2,6 +2,32 @@
 #include <chrono>
 
 
+// mqttForwardCommandQueue
+// comForwardFlexSPO2Queue
+// comForwardIMUForceQueue
+// flexSPO2ForwardMQTTQueue
+// imuForceForwardMQTTQueue
+
+// Mutex for each queue
+
+// Bluetooth -> Com object
+// Communication Process Object
+// Sensor Process Objects 
+// MQTT Process Object
+// 14 Joint Rom Objects -> 14 Respective Session Config Objects
+// 1 Wrist Orientation Object -> Session Config Object
+// 5 Finger Abduction Object -> 5 Respective Session Config Objects
+// 5 Force Processing Objects -> 5 Respective Session Config Objects
+// SPO2 Processing Object
+
+// Wire everything together
+// Call "process.run()" in thread wrapping in main
+// If a thead finishes then an error occurred (failed to initialize, connect, etc)
+// Possibly notify UI or just exit program 
+
+
+
+
 int main() {
 
     return 0;
@@ -57,3 +83,5 @@ int main() {
     // The MQTT process will read from a command topic where the UI sends it topics. 
     // From here it should be able to directly send it to the communication process through a queue
         // Shouldnt be any conversion necessary (single byte, universal meaning of codes)
+    
+    // Literally just forwards commands to glove and gripper 

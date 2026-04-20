@@ -16,6 +16,7 @@ include(FetchContent)
 #)
 
 set(PAHO_WITH_MQTT_C ON CACHE BOOL "" FORCE)
+set(PAHO_BUILD_DOCUMENTATION ON CACHE BOOL "" FORCE)
 
 
 FetchContent_Declare(
@@ -46,12 +47,18 @@ add_subdirectory(core)
 find_package(Threads REQUIRED)
 
 add_executable(app app/main.cpp)
-target_include_directories(app PUBLIC core/include/)
+target_include_directories(app PUBLIC core/include/
+                               PUBLIC core/include/Messaging
+                               PUBLIC core/include/Processing)
 target_link_libraries(app PUBLIC blood_oxygen_processor 
                           PUBLIC bluetooth 
                           PUBLIC finger_abduction_processor 
+                          PUBLIC force_processing
                           PUBLIC joint_rom_processor 
                           PUBLIC wrist_orientation_processor
+                          PUBLIC com_worker
+                          PUBLIC sensor_processing_worker
+                          PUBLIC mqtt_worker
                           PUBLIC simpleble::simpleble
                           PUBLIC InEKF::Core 
                           PUBLIC InEKF::SE2Models 
