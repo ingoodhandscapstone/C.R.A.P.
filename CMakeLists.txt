@@ -43,6 +43,7 @@ FetchContent_MakeAvailable(pahomqtt simpleble inekf)
 
 add_subdirectory(core)
 
+find_package(Threads REQUIRED)
 
 add_executable(app app/main.cpp)
 target_include_directories(app PUBLIC core/include/)
@@ -55,4 +56,5 @@ target_link_libraries(app PUBLIC blood_oxygen_processor
                           PUBLIC InEKF::Core 
                           PUBLIC InEKF::SE2Models 
                           PUBLIC InEKF::Inertial
-                          PUBLIC PahoMqttCpp::paho-mqttpp3)
+                          PUBLIC PahoMqttCpp::paho-mqttpp3
+                          PUBLIC Threads::Threads)

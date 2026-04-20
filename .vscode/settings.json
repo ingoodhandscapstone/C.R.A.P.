@@ -1,0 +1,29 @@
+{
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/**",
+    "${workspaceFolder}/core/include",
+    "${workspaceFolder}/build/_deps/simpleble-src/simpleble/include",
+    "${workspaceFolder}/build/_deps/simpleble-src/dependencies/external",
+    "${workspaceFolder}/build/_deps/simpleble-build/export",
+    "${workspaceFolder}/build/_deps/inekf-src/include",
+    "${workspaceFolder}/build/_deps/pahomqtt-src/include",
+    "${workspaceFolder}/build/_deps/pahomqtt-src/externals/paho.mqtt.c/src",
+    "/usr/include/eigen3"
+  ],
+  "C_Cpp.default.browse.path": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/core/include",
+    "${workspaceFolder}/build/_deps/simpleble-src/simpleble/include",
+    "${workspaceFolder}/build/_deps/simpleble-src/dependencies/external",
+    "${workspaceFolder}/build/_deps/simpleble-build/export",
+    "${workspaceFolder}/build/_deps/inekf-src/include",
+    "${workspaceFolder}/build/_deps/pahomqtt-src/include",
+    "${workspaceFolder}/build/_deps/pahomqtt-src/externals/paho.mqtt.c/src",
+    "/usr/include/eigen3"
+  ],
+  "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": true,
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64"
+}
