@@ -51,6 +51,7 @@ target_include_directories(app PUBLIC core/include/
                                PUBLIC core/include/Messaging
                                PUBLIC core/include/Processing)
 target_link_libraries(app PUBLIC blood_oxygen_processor 
+                          PUBLIC accel_gravity_measure_model
                           PUBLIC bluetooth 
                           PUBLIC finger_abduction_processor 
                           PUBLIC force_processing

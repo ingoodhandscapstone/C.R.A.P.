@@ -42,12 +42,12 @@ enum class SensorID{
     PINKY_FORCE
 };
 
-struct dataOutputElement {
+struct DataOutputElement {
     SensorID id;
     std::string data; 
 };
 
-struct dataToProcessorElement {
+struct DataToProcessorElement {
     SensorID id;
     uint32_t timestamp; // In microseconds
     std::vector<uint32_t> data;

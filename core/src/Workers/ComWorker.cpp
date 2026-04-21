@@ -16,7 +16,7 @@ uint32_t readUint32(const std::vector<uint8_t>& bytes, size_t startIndex) {
 }
 }
 
-void ComWorker::convertToDataToProcessorElem(std::vector<dataToProcessorElement>& dataElements,
+void ComWorker::convertToDataToProcessorElem(std::vector<DataToProcessorElement>& dataElements,
                                              std::vector<std::vector<uint8_t>> receivedMessages) {
     dataElements.clear();
 
@@ -25,7 +25,7 @@ void ComWorker::convertToDataToProcessorElem(std::vector<dataToProcessorElement>
             continue;
         }
 
-        dataToProcessorElement elem;
+        DataToProcessorElement elem;
         elem.id = static_cast<SensorID>(message[ID_INDEX]);
         elem.timestamp = readUint32(message, TIMESTAMP_INDEX);
 
@@ -106,8 +106,8 @@ void ComWorker::run(){
             com->read(static_cast<Endpoints>(i), receivedMessages.at(i));
         }
 
-        // Convert to dataToProcessorElement 
-        std::vector<dataToProcessorElement> dataElements;
+        // Convert to DataToProcessorElement 
+        std::vector<DataToProcessorElement> dataElements;
         convertToDataToProcessorElem(dataElements, receivedMessages);
         // Push to correct queues based on SensorID
         {
@@ -122,7 +122,7 @@ void ComWorker::run(){
     }
 }
 
-void ComWorker::placeElementInCorrectQueue(dataToProcessorElement& elem) {
+void ComWorker::placeElementInCorrectQueue(DataToProcessorElement& elem) {
     switch (elem.id) {
         case SensorID::WRIST_SPO2:
         case SensorID::POINTER_MCP_FLEX:

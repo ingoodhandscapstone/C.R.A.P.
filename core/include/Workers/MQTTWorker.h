@@ -104,8 +104,8 @@ class MQTTWorker{
     bool pubFailed;
 
     std::queue<uint8_t> * mqttForwardCommandQueue;
-    std::queue <dataOutputElement> * flexSPO2ForwardMQTTQueue;
-    std::queue<dataOutputElement> * imuForceForwardMQTTQueue;
+    std::queue <DataOutputElement> * flexSPO2ForwardMQTTQueue;
+    std::queue<DataOutputElement> * imuForceForwardMQTTQueue;
 
     std::mutex * mqttForwardCommandMutex;
     std::mutex * flexSPO2ForwardMQTTMutex;
@@ -126,7 +126,7 @@ class MQTTWorker{
     // This assumes SensorID will be apart of of both queue elements
     std::string getTopic(SensorID id);
   
-    void publishMessage(std::mutex * queueMut, std::queue<dataOutputElement> * elemQueue);
+    void publishMessage(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue);
 
     public:
         MQTTWorker() :
@@ -149,8 +149,8 @@ class MQTTWorker{
             lastPublishedTokenMap() {};
 
         bool initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
-                        std::queue<dataOutputElement> * flexSPO2ForwardMQTTQueue,
-                        std::queue<dataOutputElement> * imuForceForwardMQTTQueue,
+                        std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue,
+                        std::queue<DataOutputElement> * imuForceForwardMQTTQueue,
                         std::mutex * mqttForwardCommandMutex,
                         std::mutex * flexSPO2ForwardMQTTMutex,
                         std::mutex * imuForceForwardMQTTMutex);

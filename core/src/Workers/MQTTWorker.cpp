@@ -33,8 +33,8 @@ const std::string MQTTWorker::TOPIC_SPO2_WRIST = "spo2/WRIST";
 
 
 bool MQTTWorker::initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
-                            std::queue<dataOutputElement> * flexSPO2ForwardMQTTQueue,
-                            std::queue<dataOutputElement> * imuForceForwardMQTTQueue,
+                            std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue,
+                            std::queue<DataOutputElement> * imuForceForwardMQTTQueue,
                             std::mutex * mqttForwardCommandMutex,
                             std::mutex * flexSPO2ForwardMQTTMutex,
                             std::mutex * imuForceForwardMQTTMutex) {
@@ -209,7 +209,7 @@ void MQTTWorker::PublisherActionListener::on_failure(const mqtt::token& asyncAct
 }
 
 
-void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<dataOutputElement> * elemQueue){
+void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue){
     // Access mutex for queue
     std::lock_guard guard(*queueMut);
     // check empty
@@ -218,7 +218,7 @@ void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<dataOutputElem
     }
 
     // Access element
-    dataOutputElement elem = elemQueue->front();
+    DataOutputElement elem = elemQueue->front();
     // Get topic 
     mqtt::string_ref topic = getTopic(elem.id);
     // Extract data from elem

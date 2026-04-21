@@ -1,4 +1,5 @@
 add_library(blood_oxygen_processor OBJECT src/Processing/BloodOxygenProcessor.cpp)
+add_library(accel_gravity_measure_model OBJECT src/Processing/AccelGravityMeasureModel.cpp)
 add_library(bluetooth OBJECT src/Messaging/Bluetooth.cpp)
 add_library(finger_abduction_processor OBJECT src/Processing/FingerAbductionProcessor.cpp)
 add_library(force_processing OBJECT src/Processing/ForceProcessing.cpp)
@@ -12,6 +13,8 @@ add_library(mqtt_worker OBJECT src/Workers/MQTTWorker.cpp)
 
 target_include_directories(blood_oxygen_processor PUBLIC include/Processing
                                                   PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
+target_include_directories(accel_gravity_measure_model PUBLIC include/Processing
+                                                     PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
 target_include_directories(bluetooth PUBLIC include/Messaging
                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-src/simpleble/include
                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-src/dependencies/external
@@ -35,9 +38,13 @@ target_include_directories(mqtt_worker PUBLIC include/Processing
 
 
 target_link_libraries(bluetooth PUBLIC simpleble::simpleble)
+target_link_libraries(accel_gravity_measure_model PUBLIC InEKF::Core)
 target_link_libraries(finger_abduction_processor PUBLIC InEKF::Core PUBLIC InEKF::SE2Models PUBLIC InEKF::Inertial)
 target_link_libraries(wrist_orientation_processor PUBLIC InEKF::Core PUBLIC InEKF::SE2Models PUBLIC InEKF::Inertial)
 target_link_libraries(mqtt_worker PUBLIC PahoMqttCpp::paho-mqttpp3)
+target_link_libraries(force_processing PUBLIC PUBLIC InEKF::Core)
+target_link_libraries(joint_rom_processor PUBLIC PUBLIC InEKF::Core)
+
 # May have MQTT related class later
 
 

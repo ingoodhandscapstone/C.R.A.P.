@@ -20,14 +20,14 @@ class ComWorker {
     std::mutex * comCommandForwardProcessingMutex;
 
     std::queue<uint8_t> * mqttForwardCommandQueue;
-    std::queue<dataToProcessorElement> * comForwardFlexSPO2Queue; 
-    std::queue<dataToProcessorElement> * comForwardIMUForceQueue; 
+    std::queue<DataToProcessorElement> * comForwardFlexSPO2Queue; 
+    std::queue<DataToProcessorElement> * comForwardIMUForceQueue; 
     std::queue<uint8_t>  * comCommandForwardProcessingQueue;
 
     Communication * com;
 
-    void convertToDataToProcessorElem(std::vector<dataToProcessorElement>& dataElements, std::vector<std::vector<uint8_t>> receivedMessages);
-    void placeElementInCorrectQueue(dataToProcessorElement& elem);
+    void convertToDataToProcessorElem(std::vector<DataToProcessorElement>& dataElements, std::vector<std::vector<uint8_t>> receivedMessages);
+    void placeElementInCorrectQueue(DataToProcessorElement& elem);
 
     public:
 
