@@ -2,6 +2,7 @@
 #define BLUETOOTH_H
 
 #include "Communication.h"
+#include "Endpoints.h"
 #include "simpleble/SimpleBLE.h"
 #include "simpleble/Adapter.h"
 #include "simpleble/Utils.h"
@@ -12,15 +13,6 @@
 #include <cstdint>
 #include <mutex>
 
-enum class Endpoints{
-    IMU_GYRO_CHAR,
-    IMU_ACCEL_CHAR,
-    FLEX_CHAR,
-    SPO2_CHAR,
-    FORCE_CHAR,
-    COMMAND_CHAR_GLOVE,
-    COMMAND_CHAR_GRIPPER
-};
 
 
 class Bluetooth : public Communication {

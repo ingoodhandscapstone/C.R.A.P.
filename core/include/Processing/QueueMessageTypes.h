@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <cstdint>
 
 
 enum class SensorType{
@@ -33,7 +34,12 @@ enum class SensorID{
     PINKY_PIP_FLEX,
     PINKY_DIP_FLEX,
     THUMB_MCP_FLEX,
-    THUMB_PIP_FLEX
+    THUMB_PIP_FLEX,
+    POINTER_FORCE,
+    MIDDLE_FORCE,
+    THUMB_FORCE,
+    RING_FORCE,
+    PINKY_FORCE
 };
 
 struct dataOutputElement {
@@ -43,7 +49,7 @@ struct dataOutputElement {
 
 struct dataToProcessorElement {
     SensorID id;
-    uint32_t timestamp;
+    uint32_t timestamp; // In microseconds
     std::vector<uint32_t> data;
 };
 

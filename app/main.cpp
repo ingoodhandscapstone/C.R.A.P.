@@ -7,6 +7,7 @@
 // comForwardIMUForceQueue
 // flexSPO2ForwardMQTTQueue
 // imuForceForwardMQTTQueue
+// comCommandForwardProcessingQueue
 
 // Mutex for each queue
 
