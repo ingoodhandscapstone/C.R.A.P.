@@ -25,7 +25,7 @@ target_include_directories(joint_rom_processor PUBLIC include/Processing
 target_include_directories(wrist_orientation_processor PUBLIC include/Processing
                                                        PUBLIC include/Workers
                                                        PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
-target_include_directories(com_worker PUBLIC include/Messaging)
+target_include_directories(com_worker PUBLIC include/Messaging PUBLIC include/Workers PUBLIC include/Processing)
 target_include_directories(sensor_processing_worker PUBLIC include/Processing
                                                     PUBLIC include/Workers)
 target_include_directories(mqtt_worker PUBLIC include/Processing

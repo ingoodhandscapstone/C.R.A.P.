@@ -3,7 +3,10 @@
 
 #include <mutex>
 #include <queue>
+#include <vector>
+
 #include "Communication.h"
+#include "QueueMessageTypes.h"
 
 
 class ComWorker {
@@ -13,12 +16,12 @@ class ComWorker {
     std::mutex * comForwardIMUForceMutex;
 
     std::queue<uint8_t> * mqttForwardCommandQueue;
+    std::queue<dataToProcessorElement> * comForwardFlexSPO2Queue; 
+    std::queue<dataToProcessorElement> * comForwardIMUForceQueue; 
 
-    
 
+    Communication * com;
 
-
-    void deserialize();
 
     public:
 

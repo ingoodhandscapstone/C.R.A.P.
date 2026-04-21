@@ -1,6 +1,10 @@
 #ifndef QUEUE_MESSAGE_TYPES_H
 #define QUEUE_MESSAGE_TYPES_H
 
+#include <vector>
+#include <string>
+
+
 enum class SensorType{
    IMU_GYRO,
    IMU_ACCEL,
@@ -37,7 +41,11 @@ struct dataOutputElement {
     std::string data; 
 };
 
-
+struct dataToProcessorElement {
+    SensorID id;
+    uint32_t timestamp;
+    std::vector<uint32_t> data;
+};
 
 
 #endif
