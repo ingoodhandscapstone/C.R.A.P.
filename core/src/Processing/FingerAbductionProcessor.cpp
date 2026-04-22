@@ -49,11 +49,17 @@ bool FingerAbductionProcessor::calibrate(Eigen::Vector3d& accels, Eigen::Vector3
 
 void FingerAbductionProcessor::correctOrthoOfReading(Eigen::Vector3d& accel){
     // Use the Imu Processing config correction matrix and bias to correct accel
-    accel = (config.orthoCorrectionMat * accel) + config.orthoCorrectionBias;
+    if(config == nullptr){
+        return;
+    }
+    accel = (config->orthoCorrectionMat * accel) + config->orthoCorrectionBias;
 }
 
 
-bool FingerAbductionProcessor::initialize(ImuProcessingConfig& config){
+bool FingerAbductionProcessor::initialize(ImuProcessingConfig * config){
+    if(config == nullptr){
+        return false;
+    }
     this->config = config;
 
     Eigen::Matrix<double, 12, 1> xi = Eigen::Matrix<double, 12, 1>::Zero();
@@ -61,23 +67,23 @@ bool FingerAbductionProcessor::initialize(ImuProcessingConfig& config){
     xi.tail<3>() = Eigen::Vector3d::Zero();
 
     InEKF::SE3<2, 6>::MatrixCov initialCov = InEKF::SE3<2, 6>::MatrixCov::Zero();
-    initialCov.block<3,3>(0,0) = config.orientationVariance.asDiagonal();
+    initialCov.block<3,3>(0,0) = config->orientationVariance.asDiagonal();
     initialCov.block<3,3>(3,3) = Eigen::Matrix3d::Identity() * VELOCITY_VARIANCE;
     initialCov.block<3,3>(6,6) = Eigen::Matrix3d::Identity() * POSITION_VARIANCE;
-    initialCov.block<3,3>(9,9) = config.gyroBiasNoise.cwiseProduct(config.gyroBiasNoise).asDiagonal();
-    initialCov.block<3,3>(12,12) = config.accelsBiasNoise.cwiseProduct(config.accelsBiasNoise).asDiagonal();
+    initialCov.block<3,3>(9,9) = config->gyroBiasNoise.cwiseProduct(config->gyroBiasNoise).asDiagonal();
+    initialCov.block<3,3>(12,12) = config->accelsBiasNoise.cwiseProduct(config->accelsBiasNoise).asDiagonal();
 
     currentState = InEKF::SE3<2, 6>(InEKF::SO3<>(initialOrientation), xi, initialCov);
 
     InEKF::InertialProcess::MatrixCov q = InEKF::InertialProcess::MatrixCov::Zero();
-    q.block<3,3>(0,0) = config.gyroProcessNoise.cwiseProduct(config.gyroProcessNoise).asDiagonal();
-    q.block<3,3>(3,3) = config.accelProcessNoise.cwiseProduct(config.accelProcessNoise).asDiagonal();
-    q.block<3,3>(9,9) = config.gyroBiasNoise.cwiseProduct(config.gyroBiasNoise).asDiagonal();
-    q.block<3,3>(12,12) = config.accelsBiasNoise.cwiseProduct(config.accelsBiasNoise).asDiagonal();
+    q.block<3,3>(0,0) = config->gyroProcessNoise.cwiseProduct(config->gyroProcessNoise).asDiagonal();
+    q.block<3,3>(3,3) = config->accelProcessNoise.cwiseProduct(config->accelProcessNoise).asDiagonal();
+    q.block<3,3>(9,9) = config->gyroBiasNoise.cwiseProduct(config->gyroBiasNoise).asDiagonal();
+    q.block<3,3>(12,12) = config->accelsBiasNoise.cwiseProduct(config->accelsBiasNoise).asDiagonal();
     pModel.setQ(q);
 
     mModel.setGravity(GRAVITY);
-    mModel.setCovariance(config.accelMeasurementCovariance);
+    mModel.setCovariance(config->accelMeasurementCovariance);
 
     ekf.emplace(&pModel, currentState, InEKF::ERROR::RIGHT);
     ekf->addMeasureModel("accel", &mModel);
@@ -134,4 +140,3 @@ void FingerAbductionProcessor::getAngle(float& angle, Eigen::Matrix3d handOrient
 
     angle = static_cast<float>(abs(yawDegrees)); // Absolute value because angle from center line away
 }
-

@@ -22,7 +22,7 @@ class FingerAbductionProcessor {
     static const float VELOCITY_VARIANCE;
     static const float POSITION_VARIANCE;
 
-    ImuProcessingConfig config;
+    ImuProcessingConfig * config;
 
     std::optional<InEKF::InEKF<InEKF::InertialProcess>> ekf;
     InEKF::InertialProcess pModel;
@@ -45,14 +45,7 @@ class FingerAbductionProcessor {
     public:
 
         FingerAbductionProcessor()
-            : config{Eigen::Vector3d::Zero(),
-                     Eigen::Vector3d::Zero(),
-                     Eigen::Vector3d::Zero(),
-                     Eigen::Vector3d::Zero(),
-                     Eigen::Matrix3d::Identity(),
-                     Eigen::Vector3d::Zero(),
-                     Eigen::Vector3d::Zero(),
-                     Eigen::Matrix3d::Identity()},
+            : config(nullptr),
               ekf(std::nullopt),
               pModel(),
               mModel(),
@@ -64,7 +57,7 @@ class FingerAbductionProcessor {
               currentState(),
               currentTimestamp(0) {}
 
-        bool initialize(ImuProcessingConfig& config);
+        bool initialize(ImuProcessingConfig * config);
 
 
         // Going to get initial position and gyro bias

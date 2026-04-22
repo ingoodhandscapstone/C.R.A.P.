@@ -3,6 +3,7 @@
 
 #include "Eigen/Core"
 #include <map>
+#include <vector>
 
 struct ImuProcessingConfig {
     Eigen::Vector3d gyroProcessNoise; // standard deviation

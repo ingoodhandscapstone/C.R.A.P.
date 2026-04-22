@@ -1,13 +1,16 @@
 #include "JointRomProcessor.h"
 
 
-bool JointRomProcessor::initialize(ResistiveSensorConfig& config, int numberOfSamples){
+void JointRomProcessor::initialize(ResistiveSensorConfig * config){
     this->config = config;
-    this->numberOfSamples = numberOfSamples;
 }
 
 
 bool JointRomProcessor::calibration(int& digVoltage){
+    if(config == nullptr){
+        return false;
+    }
+
     if(calibrationSampleCount > (numberOfSamples - 1)){ // Number of samples not indexing from 0, whereas calibrationSampleCount starts at 0
         return true;
     }
@@ -23,7 +26,7 @@ bool JointRomProcessor::calibration(int& digVoltage){
 
     // Get voltage difference for input offset
     if(calibrationSampleCount == (numberOfSamples - 1)){
-        inputVoltageOffset = config.calibratePositionVoltage - movingAverageVoltage;
+        inputVoltageOffset = config->calibratePositionVoltage - movingAverageVoltage;
     }
 
     calibrationSampleCount++;
@@ -57,6 +60,10 @@ void JointRomProcessor::voltageToAngle(float& angle, std::vector<float>& funcCoe
 
 
 bool JointRomProcessor::getJointAngle(int& digVolt, float& angle){
+    if(config == nullptr){
+        return false;
+    }
+
     float voltage;
 
     digitalToFloat(digVolt, voltage);
@@ -69,13 +76,15 @@ bool JointRomProcessor::getJointAngle(int& digVolt, float& angle){
         return false;
     }
 
-    std::map<float, std::vector<float>>& curve = (voltDiff > 0) ? config.loadingPieceCoef : config.unloadingPieceCoef;
+    std::map<float, std::vector<float>>& curve = (voltDiff > 0) ? config->loadingPieceCoef : config->unloadingPieceCoef;
 
 
-    auto it = curve.lower_bound(movingAverageVoltage);
+    auto it = curve.lower_bound(movingAverageVoltage + inputVoltageOffset);
 
     if(it == curve.end()){
         it = std::prev(it);
+    } else if(it == curve.begin()){
+        it = std::next(it);
     }
 
     voltageToAngle(angle, it->second);

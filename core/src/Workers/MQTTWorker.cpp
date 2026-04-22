@@ -231,3 +231,8 @@ void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<DataOutputElem
     client.publish(messagePtr);
 
 }
+
+
+std::string MQTTWorker::getTopic(SensorID id){
+    
+}
