@@ -38,6 +38,11 @@ class FingerAbductionProcessor {
 
     InEKF::SE3<2, 6> currentState;
     uint32_t currentTimestamp;
+    std::optional<Eigen::Vector3d> currentGyro;
+    std::optional<Eigen::Vector3d> currentAccel;
+    std::optional<uint32_t> currentGyroTimestamp;
+    std::optional<uint32_t> currentAccelTimestamp;
+    bool hasPredictedThisCycle;
 
     void correctOrthoOfReading(Eigen::Vector3d& accel);
 
@@ -55,7 +60,12 @@ class FingerAbductionProcessor {
               initialOrientation(Eigen::Matrix3d::Identity()),
               initialGyroBias(Eigen::Vector3d::Zero()),
               currentState(),
-              currentTimestamp(0) {}
+              currentTimestamp(0),
+              currentGyro(std::nullopt),
+              currentAccel(std::nullopt),
+              currentGyroTimestamp(std::nullopt),
+              currentAccelTimestamp(std::nullopt),
+              hasPredictedThisCycle(false) {}
 
         bool initialize(ImuProcessingConfig * config);
 
@@ -67,11 +77,14 @@ class FingerAbductionProcessor {
         bool reset();
 
         void setInitialTimestamp(uint32_t timestamp);
+        void setGyro(const Eigen::Vector3d& gyro, uint32_t timestamp);
+        void setAccel(const Eigen::Vector3d& accel, uint32_t timestamp);
+        bool hasGyroAndAccel() const;
 
         // Sensor Processor Work has to know that predict is called and then update
-        void predict(Eigen::Vector6d& u, uint32_t timestamp); // Takes in gyro and accel
+        void predict(); // Uses staged gyro and accel
 
-        void update(Eigen::Vector3d& accel); // Takes in accelerometer reading
+        void update(); // Uses staged accelerometer reading
         
         // Only updates after predict() & update() called since last getAngle()
         void getAngle(float& angle, Eigen::Matrix3d handOrientation);

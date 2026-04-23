@@ -48,9 +48,15 @@ struct DataOutputElement {
 };
 
 struct DataToProcessorElement {
+    SensorType type;
     SensorID id;
     uint32_t timestamp; // In microseconds
     std::vector<uint32_t> data;
+};
+
+struct CalibrationStatusMessage {
+    uint32_t epoch;
+    uint32_t requiredCount;
 };
 
 

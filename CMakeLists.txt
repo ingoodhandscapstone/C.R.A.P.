@@ -59,6 +59,7 @@ target_link_libraries(app PUBLIC blood_oxygen_processor
                           PUBLIC wrist_orientation_processor
                           PUBLIC com_worker
                           PUBLIC sensor_processing_worker
+                          PUBLIC sensor_processing_lane_worker
                           PUBLIC mqtt_worker
                           PUBLIC simpleble::simpleble
                           PUBLIC InEKF::Core 

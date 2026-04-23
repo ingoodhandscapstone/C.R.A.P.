@@ -4,6 +4,7 @@
 #include "mqtt/async_client.h"
 
 #include "QueueMessageTypes.h"
+#include "SessionCommand.h"
 
 #include <queue>
 #include <mutex>
@@ -98,18 +99,22 @@ class MQTTWorker{
     static const std::string TOPIC_ORIENTATION_WRIST_X;
     static const std::string TOPIC_ORIENTATION_WRIST_Y;
     static const std::string TOPIC_SPO2_WRIST;
+    static const std::string TOPIC_SYSTEM_COMMAND;
+    static const std::string TOPIC_SYSTEM_CALIBRATION_STATUS;
 
     int connectionAttemptCount;
     bool subFailed;
     bool pubFailed;
 
-    std::queue<uint8_t> * mqttForwardCommandQueue;
+    std::queue<SessionCommand> * mqttForwardCommandQueue;
     std::queue <DataOutputElement> * flexSPO2ForwardMQTTQueue;
     std::queue<DataOutputElement> * imuForceForwardMQTTQueue;
+    std::queue<CalibrationStatusMessage> * calibrationStatusQueue;
 
     std::mutex * mqttForwardCommandMutex;
     std::mutex * flexSPO2ForwardMQTTMutex;
     std::mutex * imuForceForwardMQTTMutex;
+    std::mutex * calibrationStatusMutex;
 
     std::mutex callbackStateMutex; // For callback-shared member state (flags/counters/maps).
     std::mutex clientAccessMutex; // For mqtt::async_client calls shared across threads.
@@ -123,19 +128,27 @@ class MQTTWorker{
 
     std::unordered_map<int, mqtt::delivery_token_ptr> lastPublishedTokenMap;
 
+    bool calibrationEpochActive;
+    uint32_t currentCalibrationEpoch;
+    uint32_t calibrationMessagesReceived;
+    uint32_t calibrationMessagesRequired;
+
     // This assumes SensorID will be apart of of both queue elements
     std::string getTopic(SensorID id);
   
-    void publishMessage(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue);
+    void publishData(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue);
+    void publishCalibrationStatus();
 
     public:
         MQTTWorker() :
             mqttForwardCommandQueue(nullptr),
             flexSPO2ForwardMQTTQueue(nullptr),
             imuForceForwardMQTTQueue(nullptr),
+            calibrationStatusQueue(nullptr),
             mqttForwardCommandMutex(nullptr),
             flexSPO2ForwardMQTTMutex(nullptr),
             imuForceForwardMQTTMutex(nullptr),
+            calibrationStatusMutex(nullptr),
             connectionAttemptCount(0),
             connect_opts(),
             client(SERVER_URI, CLIENT_ID),
@@ -146,14 +159,20 @@ class MQTTWorker{
             clientAccessMutex(),
             subFailed(false),
             pubFailed(false),
-            lastPublishedTokenMap() {};
+            lastPublishedTokenMap(),
+            calibrationEpochActive(false),
+            currentCalibrationEpoch(0),
+            calibrationMessagesReceived(0),
+            calibrationMessagesRequired(0) {};
 
-        bool initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
+        bool initialize(std::queue<SessionCommand> * mqttForwardCommandQueue,
                         std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue,
                         std::queue<DataOutputElement> * imuForceForwardMQTTQueue,
+                        std::queue<CalibrationStatusMessage> * calibrationStatusQueue,
                         std::mutex * mqttForwardCommandMutex,
                         std::mutex * flexSPO2ForwardMQTTMutex,
-                        std::mutex * imuForceForwardMQTTMutex);
+                        std::mutex * imuForceForwardMQTTMutex,
+                        std::mutex * calibrationStatusMutex);
 
         void run();
 

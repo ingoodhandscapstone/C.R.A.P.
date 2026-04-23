@@ -84,6 +84,11 @@ bool WristOrientationProcessor::reset() {
     ekf.reset();
     sampleCalibrationCount = 0;
     currentTimestamp = 0;
+    currentGyro.reset();
+    currentAccel.reset();
+    currentGyroTimestamp.reset();
+    currentAccelTimestamp.reset();
+    hasPredictedThisCycle = false;
     currentState = InEKF::SE3<2, 6>();
     initialOrientation = Eigen::Matrix3d::Identity();
     initialGyroBias = Eigen::Vector3d::Zero();
@@ -92,32 +97,73 @@ bool WristOrientationProcessor::reset() {
 
 void WristOrientationProcessor::setInitialTimestamp(uint32_t timestamp) { currentTimestamp = timestamp; }
 
-void WristOrientationProcessor::predict(Eigen::Vector6d& u, uint32_t timestamp) {
+void WristOrientationProcessor::setGyro(const Eigen::Vector3d& gyro, uint32_t timestamp) {
+    currentGyro = gyro;
+    currentGyroTimestamp = timestamp;
+}
+
+void WristOrientationProcessor::setAccel(const Eigen::Vector3d& accel, uint32_t timestamp) {
+    currentAccel = accel;
+    currentAccelTimestamp = timestamp;
+}
+
+bool WristOrientationProcessor::hasGyroAndAccel() const {
+    return currentGyro.has_value() && currentAccel.has_value() &&
+           currentGyroTimestamp.has_value() && currentAccelTimestamp.has_value();
+}
+
+void WristOrientationProcessor::predict() {
     if (!ekf.has_value()) {
         return;
     }
+
+    if (!hasGyroAndAccel()) {
+        return;
+    }
+
+    const uint64_t timestampAverage = (static_cast<uint64_t>(currentGyroTimestamp.value()) +
+                                       static_cast<uint64_t>(currentAccelTimestamp.value())) / 2ULL;
+    const uint32_t timestamp = static_cast<uint32_t>(timestampAverage);
+
+    Eigen::Vector6d u;
+    u.head<3>() = currentGyro.value();
+    u.tail<3>() = currentAccel.value();
 
     Eigen::Vector6d correctedU = u;
     Eigen::Vector3d correctedAccel = correctedU.tail<3>();
     correctOrthoOfReading(correctedAccel);
     correctedU.tail<3>() = correctedAccel;
 
+    if (currentTimestamp == 0) {
+        currentTimestamp = timestamp;
+    }
     const double dt = static_cast<double>(timestamp - currentTimestamp) * 1e-6;
     currentTimestamp = timestamp;
     currentState = ekf->predict(correctedU, dt);
+    hasPredictedThisCycle = true;
 }
 
-void WristOrientationProcessor::update(Eigen::Vector3d& accel) {
+void WristOrientationProcessor::update() {
     if (!ekf.has_value()) {
         return;
     }
 
-    Eigen::Vector3d correctedAccel = accel;
+    if (!hasPredictedThisCycle || !currentAccel.has_value()) {
+        return;
+    }
+
+    Eigen::Vector3d correctedAccel = currentAccel.value();
     correctOrthoOfReading(correctedAccel);
 
     Eigen::VectorXd z(3);
     z = correctedAccel;
     currentState = ekf->update("accel", z);
+
+    currentGyro.reset();
+    currentAccel.reset();
+    currentGyroTimestamp.reset();
+    currentAccelTimestamp.reset();
+    hasPredictedThisCycle = false;
 }
 
 Eigen::Matrix3d WristOrientationProcessor::getHandOrientationMatrix() { return currentState.R()(); }

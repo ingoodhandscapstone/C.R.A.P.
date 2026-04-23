@@ -31,7 +31,7 @@ const SimpleBLE::BluetoothUUID Bluetooth::gripperCommandCharUUID = SimpleBLE::Bl
 const SimpleBLE::BluetoothUUID Bluetooth::forceUUID = SimpleBLE::BluetoothUUID();
 
 
-bool Bluetooth::initialization(){
+bool Bluetooth::initialize(){
 
     auto adapters = SimpleBLE::Safe::Adapter::get_adapters();
 

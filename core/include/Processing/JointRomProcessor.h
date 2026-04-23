@@ -65,6 +65,8 @@ class JointRomProcessor {
 
         bool calibration(int& digVoltage);
 
+        bool isCalibrated() {return calibrationSampleCount > (numberOfSamples - 1);}
+
 
 };
 

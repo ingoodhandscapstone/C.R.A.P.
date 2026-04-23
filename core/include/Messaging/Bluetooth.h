@@ -69,7 +69,7 @@ class Bluetooth : public Communication {
 
 
     public:
-        bool initialization();
+        bool initialize();
         bool read(const Endpoints& endpoint, std::vector<uint8_t>& message) override;
         bool write(const Endpoints& endpoint, std::vector<uint8_t>& message) override;
         bool isConnected() override;

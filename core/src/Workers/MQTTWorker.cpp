@@ -1,5 +1,8 @@
 #include "MQTTWorker.h"
 
+#include <algorithm>
+#include <cctype>
+
 const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 5;
 const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 5;
 const int MQTTWorker::QOS = 1;
@@ -29,21 +32,27 @@ const std::string MQTTWorker::TOPIC_ABDUCTION_THUMB = "abduction/THUMB";
 const std::string MQTTWorker::TOPIC_ORIENTATION_WRIST_X = "orientation/WRIST_X";
 const std::string MQTTWorker::TOPIC_ORIENTATION_WRIST_Y = "orientation/WRIST_Y";
 const std::string MQTTWorker::TOPIC_SPO2_WRIST = "spo2/WRIST";
+const std::string MQTTWorker::TOPIC_SYSTEM_COMMAND = "system/command";
+const std::string MQTTWorker::TOPIC_SYSTEM_CALIBRATION_STATUS = "system/calibration_status";
 
 
 
-bool MQTTWorker::initialize(std::queue<uint8_t> * mqttForwardCommandQueue,
+bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue,
                             std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue,
                             std::queue<DataOutputElement> * imuForceForwardMQTTQueue,
+                            std::queue<CalibrationStatusMessage> * calibrationStatusQueue,
                             std::mutex * mqttForwardCommandMutex,
                             std::mutex * flexSPO2ForwardMQTTMutex,
-                            std::mutex * imuForceForwardMQTTMutex) {
+                            std::mutex * imuForceForwardMQTTMutex,
+                            std::mutex * calibrationStatusMutex) {
     this->mqttForwardCommandQueue = mqttForwardCommandQueue;
     this->flexSPO2ForwardMQTTQueue = flexSPO2ForwardMQTTQueue;
     this->imuForceForwardMQTTQueue = imuForceForwardMQTTQueue;
+    this->calibrationStatusQueue = calibrationStatusQueue;
     this->mqttForwardCommandMutex = mqttForwardCommandMutex;
     this->flexSPO2ForwardMQTTMutex = flexSPO2ForwardMQTTMutex;
     this->imuForceForwardMQTTMutex = imuForceForwardMQTTMutex;
+    this->calibrationStatusMutex = calibrationStatusMutex;
     
     // Set connect options
     connect_opts.set_mqtt_version(MQTTVERSION_3_1_1);
@@ -83,8 +92,9 @@ void MQTTWorker::run(){
 
         }
 
-        publishMessage(flexSPO2ForwardMQTTMutex, flexSPO2ForwardMQTTQueue);
-        publishMessage(imuForceForwardMQTTMutex, imuForceForwardMQTTQueue);
+        publishData(flexSPO2ForwardMQTTMutex, flexSPO2ForwardMQTTQueue);
+        publishData(imuForceForwardMQTTMutex, imuForceForwardMQTTQueue);
+        publishCalibrationStatus();
 
     }
    
@@ -121,37 +131,45 @@ void MQTTWorker::Callback::reconnect(){
 
 void MQTTWorker::Callback::connected(const std::string& cause){
     std::lock_guard guard(worker->clientAccessMutex);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_POINTER_MCP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_POINTER_PIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_POINTER_DIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_MIDDLE_MCP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_MIDDLE_PIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_MIDDLE_DIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_RING_MCP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_RING_PIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_RING_DIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_PINKY_MCP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_PINKY_PIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_PINKY_DIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_THUMB_MCP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_JOINT_THUMB_PIP, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ABDUCTION_POINTER, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ABDUCTION_MIDDLE, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ABDUCTION_RING, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ABDUCTION_PINKY, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ABDUCTION_THUMB, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ORIENTATION_WRIST_X, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_ORIENTATION_WRIST_Y, QOS);
-    worker->client.subscribe(MQTTWorker::TOPIC_SPO2_WRIST, QOS);
+    worker->client.subscribe(MQTTWorker::TOPIC_SYSTEM_COMMAND, QOS);
 }
 
+
+// We do not know whether the is a random ascii value but identical underlying number as command or string literal of the number which corresponds to command
+// Chat did this and it will likely be changed
 void MQTTWorker::Callback::message_arrived(mqtt::const_message_ptr message){
     std::lock_guard commandGuard(*(worker->mqttForwardCommandMutex));
     std::string payload = message.get()->get_payload();
 
-    // It depends on if the publisher sent it as "1" or the underlying ascii value is the numbe 
-    // If "1", then do worker->mqttForwardCommandQueue->push(stoi(string));
-    // If underlying, then do worker->mqttForwardCommandQueue->push(static_cast<uint8_t>(payload[0]));
+    if(payload.empty()){
+        return;
+    }
+
+    auto isValidCommandValue = [](unsigned int value) {
+        return value <= static_cast<unsigned int>(SessionCommand::SESSION_CONFIG_GRIPPER);
+    };
+
+    // Accept either numeric text payloads (e.g. "5") or raw single-byte command payloads.
+    const bool isNumericPayload = std::all_of(payload.begin(), payload.end(), [](unsigned char c){
+        return std::isdigit(c) != 0;
+    });
+
+    if(isNumericPayload){
+        try {
+            const unsigned int value = static_cast<unsigned int>(std::stoul(payload));
+            if(isValidCommandValue(value)){
+                worker->mqttForwardCommandQueue->push(static_cast<SessionCommand>(value));
+            }
+        } catch (...) {
+            // Ignore malformed command payloads.
+        }
+        return;
+    }
+
+    const unsigned int rawValue = static_cast<unsigned int>(static_cast<uint8_t>(payload[0]));
+    if(isValidCommandValue(rawValue)){
+        worker->mqttForwardCommandQueue->push(static_cast<SessionCommand>(rawValue));
+    }
 }
 
 void MQTTWorker::SubscriberActionListener::on_failure(const mqtt::token& asyncActionToken){
@@ -209,9 +227,9 @@ void MQTTWorker::PublisherActionListener::on_failure(const mqtt::token& asyncAct
 }
 
 
-void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue){
+void MQTTWorker::publishData(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue){
     // Access mutex for queue
-    std::lock_guard guard(*queueMut);
+    std::lock_guard queueGuard(*queueMut);
     // check empty
     if(elemQueue->empty()){
         return;
@@ -227,9 +245,51 @@ void MQTTWorker::publishMessage(std::mutex * queueMut, std::queue<DataOutputElem
     const mqtt::message messageToPub(topic, data);
     mqtt::const_message_ptr messagePtr = std::make_shared<const mqtt::message>(messageToPub);
 
-    std::lock_guard guard(clientAccessMutex);
+    std::lock_guard clientGuard(clientAccessMutex);
     client.publish(messagePtr);
 
+}
+
+void MQTTWorker::publishCalibrationStatus(){
+    CalibrationStatusMessage calibrationMessage;
+    {
+        std::lock_guard queueGuard(*calibrationStatusMutex);
+        if(calibrationStatusQueue->empty()){
+            return;
+        }
+        calibrationMessage = calibrationStatusQueue->front();
+        calibrationStatusQueue->pop();
+    }
+
+    if(calibrationMessage.requiredCount == 0){
+        return;
+    }
+
+    if(!calibrationEpochActive || calibrationMessage.epoch != currentCalibrationEpoch){
+        calibrationEpochActive = true;
+        currentCalibrationEpoch = calibrationMessage.epoch;
+        calibrationMessagesReceived = 1;
+        calibrationMessagesRequired = calibrationMessage.requiredCount;
+    } else {
+        calibrationMessagesReceived++;
+    }
+
+    if(calibrationMessagesReceived < calibrationMessagesRequired){
+        return;
+    }
+
+    const std::string payload = std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED));
+    mqtt::const_message_ptr messagePtr = std::make_shared<const mqtt::message>(
+        MQTTWorker::TOPIC_SYSTEM_CALIBRATION_STATUS, payload);
+
+    {
+        std::lock_guard clientGuard(clientAccessMutex);
+        client.publish(messagePtr);
+    }
+
+    calibrationEpochActive = false;
+    calibrationMessagesReceived = 0;
+    calibrationMessagesRequired = 0;
 }
 
 

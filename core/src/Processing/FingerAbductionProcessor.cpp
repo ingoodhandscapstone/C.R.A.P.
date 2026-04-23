@@ -96,10 +96,37 @@ void FingerAbductionProcessor::setInitialTimestamp(uint32_t timestamp){
     currentTimestamp = timestamp;
 }
 
-void FingerAbductionProcessor::predict(Eigen::Vector6d& u, uint32_t timestamp){
+void FingerAbductionProcessor::setGyro(const Eigen::Vector3d& gyro, uint32_t timestamp){
+    currentGyro = gyro;
+    currentGyroTimestamp = timestamp;
+}
+
+void FingerAbductionProcessor::setAccel(const Eigen::Vector3d& accel, uint32_t timestamp){
+    currentAccel = accel;
+    currentAccelTimestamp = timestamp;
+}
+
+bool FingerAbductionProcessor::hasGyroAndAccel() const{
+    return currentGyro.has_value() && currentAccel.has_value() &&
+           currentGyroTimestamp.has_value() && currentAccelTimestamp.has_value();
+}
+
+void FingerAbductionProcessor::predict(){
     if(!ekf.has_value()){
         return;
     }
+
+    if(!hasGyroAndAccel()){
+        return;
+    }
+
+    const uint64_t timestampAverage = (static_cast<uint64_t>(currentGyroTimestamp.value()) +
+                                       static_cast<uint64_t>(currentAccelTimestamp.value())) / 2ULL;
+    const uint32_t timestamp = static_cast<uint32_t>(timestampAverage);
+
+    Eigen::Vector6d u;
+    u.head<3>() = currentGyro.value();
+    u.tail<3>() = currentAccel.value();
 
     // Apply ortho correction to accels
     Eigen::Vector6d correctedU = u;
@@ -108,24 +135,38 @@ void FingerAbductionProcessor::predict(Eigen::Vector6d& u, uint32_t timestamp){
     correctedU.tail<3>() = correctedAccel;
 
     // Call predict and set currentState to that value
+    if(currentTimestamp == 0){
+        currentTimestamp = timestamp;
+    }
     const double dt = static_cast<double>(timestamp - currentTimestamp) * 1e-6;
     currentTimestamp = timestamp;
     currentState = ekf->predict(correctedU, dt);
+    hasPredictedThisCycle = true;
 }
 
-void FingerAbductionProcessor::update(Eigen::Vector3d& accel){
+void FingerAbductionProcessor::update(){
     if(!ekf.has_value()){
         return;
     }
 
+    if(!hasPredictedThisCycle || !currentAccel.has_value()){
+        return;
+    }
+
     // Apply ortho correction to accels
-    Eigen::Vector3d correctedAccel = accel;
+    Eigen::Vector3d correctedAccel = currentAccel.value();
     correctOrthoOfReading(correctedAccel);
 
     // Call update and set currentState to that value
     Eigen::VectorXd z(3);
     z = correctedAccel;
     currentState = ekf->update("accel", z);
+
+    currentGyro.reset();
+    currentAccel.reset();
+    currentGyroTimestamp.reset();
+    currentAccelTimestamp.reset();
+    hasPredictedThisCycle = false;
 }
 
 void FingerAbductionProcessor::getAngle(float& angle, Eigen::Matrix3d handOrientation){

@@ -29,6 +29,11 @@ class WristOrientationProcessor {
 
     InEKF::SE3<2, 6> currentState;
     uint32_t currentTimestamp;
+    std::optional<Eigen::Vector3d> currentGyro;
+    std::optional<Eigen::Vector3d> currentAccel;
+    std::optional<uint32_t> currentGyroTimestamp;
+    std::optional<uint32_t> currentAccelTimestamp;
+    bool hasPredictedThisCycle;
 
     void correctOrthoOfReading(Eigen::Vector3d& accel);
     double wrapTo360(double angleDegrees) const;
@@ -43,7 +48,12 @@ class WristOrientationProcessor {
           initialOrientation(Eigen::Matrix3d::Identity()),
           initialGyroBias(Eigen::Vector3d::Zero()),
           currentState(),
-          currentTimestamp(0) {}
+          currentTimestamp(0),
+          currentGyro(std::nullopt),
+          currentAccel(std::nullopt),
+          currentGyroTimestamp(std::nullopt),
+          currentAccelTimestamp(std::nullopt),
+          hasPredictedThisCycle(false) {}
 
     bool initialize(ImuProcessingConfig * config);
     bool calibrate(Eigen::Vector3d& accels, Eigen::Vector3d& gyro);
@@ -51,8 +61,11 @@ class WristOrientationProcessor {
     bool reset();
 
     void setInitialTimestamp(uint32_t timestamp);
-    void predict(Eigen::Vector6d& u, uint32_t timestamp);
-    void update(Eigen::Vector3d& accel);
+    void setGyro(const Eigen::Vector3d& gyro, uint32_t timestamp);
+    void setAccel(const Eigen::Vector3d& accel, uint32_t timestamp);
+    bool hasGyroAndAccel() const;
+    void predict();
+    void update();
 
     Eigen::Matrix3d getHandOrientationMatrix();
     void getXAxisAngle(float& angle);

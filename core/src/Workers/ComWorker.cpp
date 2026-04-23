@@ -9,11 +9,40 @@ constexpr size_t TIMESTAMP_INDEX = 2;
 constexpr size_t DATA_STARTING_INDEX = 6;
 
 uint32_t readUint32(const std::vector<uint8_t>& bytes, size_t startIndex) {
-    return static_cast<uint32_t>(bytes[startIndex]) |
-           (static_cast<uint32_t>(bytes[startIndex + 1]) << 8) |
-           (static_cast<uint32_t>(bytes[startIndex + 2]) << 16) |
-           (static_cast<uint32_t>(bytes[startIndex + 3]) << 24);
+    return static_cast<uint32_t>(bytes[startIndex + 3]) |
+           (static_cast<uint32_t>(bytes[startIndex + 2]) << 8) |
+           (static_cast<uint32_t>(bytes[startIndex + 1]) << 16) |
+           (static_cast<uint32_t>(bytes[startIndex]) << 24);
 }
+}
+
+bool ComWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue,
+                           std::queue<DataToProcessorElement> * sensorDataProcessingFlexSPO2Queue,
+                           std::queue<DataToProcessorElement> * sensorDataProcessingImuForceQueue,
+                           std::queue<SessionCommand>  * comCommandForwardProcessingFlexSPO2Queue,
+                           std::queue<SessionCommand>  * comCommandForwardProcessingImuForceQueue,
+                           std::mutex * mqttForwardCommandMutex,
+                           std::mutex * sensorDataProcessingFlexSPO2Mutex,
+                           std::mutex * sensorDataProcessingImuForceMutex,
+                           std::mutex * comCommandForwardProcessingFlexSPO2Mutex,
+                           std::mutex * comCommandForwardProcessingImuForceMutex,
+                           Communication * com) {
+    this->mqttForwardCommandQueue = mqttForwardCommandQueue;
+    this->sensorDataProcessingFlexSPO2Queue = sensorDataProcessingFlexSPO2Queue;
+    this->sensorDataProcessingImuForceQueue = sensorDataProcessingImuForceQueue;
+    this->comCommandForwardProcessingFlexSPO2Queue = comCommandForwardProcessingFlexSPO2Queue;
+    this->comCommandForwardProcessingImuForceQueue = comCommandForwardProcessingImuForceQueue;
+
+    this->mqttForwardCommandMutex = mqttForwardCommandMutex;
+    this->sensorDataProcessingFlexSPO2Mutex = sensorDataProcessingFlexSPO2Mutex;
+    this->sensorDataProcessingImuForceMutex = sensorDataProcessingImuForceMutex;
+    this->comCommandForwardProcessingFlexSPO2Mutex = comCommandForwardProcessingFlexSPO2Mutex;
+    this->comCommandForwardProcessingImuForceMutex = comCommandForwardProcessingImuForceMutex;
+
+    this->com = com;
+
+
+    return true;
 }
 
 void ComWorker::convertToDataToProcessorElem(std::vector<DataToProcessorElement>& dataElements,
@@ -25,11 +54,11 @@ void ComWorker::convertToDataToProcessorElem(std::vector<DataToProcessorElement>
             continue;
         }
 
+        const SensorType type = static_cast<SensorType>(message[TYPE_INDEX]);
         DataToProcessorElement elem;
+        elem.type = type;
         elem.id = static_cast<SensorID>(message[ID_INDEX]);
         elem.timestamp = readUint32(message, TIMESTAMP_INDEX);
-
-        const SensorType type = static_cast<SensorType>(message[TYPE_INDEX]);
 
         switch (type) {
             case SensorType::FLEX:
@@ -70,32 +99,36 @@ void ComWorker::run(){
 
         // Lock mutex for mqttForwardCommandMutex
         // Check the queue for new message
-        // if message, forward to comCommandForwardProcessingQueue and write to both devices?? (Can this somehow go wrong given the flow?)
+        // if message, forward to both command-forward-processing queues and write to both devices?? (Can this somehow go wrong given the flow?)
         bool noMessage = true;
-        std::vector<uint8_t> message;
+        SessionCommand command = SessionCommand::NONE;
         {
             std::lock_guard guard(*mqttForwardCommandMutex);
             if(!(noMessage = mqttForwardCommandQueue->empty())){
-                message.push_back(mqttForwardCommandQueue->front());
+                command = mqttForwardCommandQueue->front();
                 mqttForwardCommandQueue->pop();
             }
 
         }
 
-        if(noMessage){
-            continue;
-        }
+        if(!noMessage){
+            {
+            std::lock_guard guard(*comCommandForwardProcessingFlexSPO2Mutex);
+            std::lock_guard guard(*comCommandForwardProcessingImuForceMutex);
 
-        {
-            std::lock_guard guard(comCommandForwardProcessingMutex);
-            comCommandForwardProcessingQueue->push(message.at(0));
-        }
+            comCommandForwardProcessingFlexSPO2Queue->push(command);
+            comCommandForwardProcessingImuForceQueue->push(command);
 
-        // I can write to both as long as the session config for gripper is different than for glove (which it is)
-        // This requires that the received values are identical in meaning to COMMANDS, WHICH THEY SHOULD BE
-        // Requires the session config command though is recognized by all devices otherwise could cause isses
-        com->write(Endpoints::COMMAND_CHAR_GRIPPER, message);
-        com->write(Endpoints::COMMAND_CHAR_GLOVE, message);
+            }
+
+            std::vector<uint8_t> message{static_cast<uint8_t>(command)};
+
+            // I can write to both as long as the session config for gripper is different than for glove (which it is)
+            // This requires that the received values are identical in meaning to COMMANDS, WHICH THEY SHOULD BE
+            // Requires the session config command though is recognized by all devices otherwise could cause isses
+            com->write(Endpoints::COMMAND_CHAR_GRIPPER, message);
+            com->write(Endpoints::COMMAND_CHAR_GLOVE, message);
+        }
 
 
         // com->read() from both devices for all of the different types of data
@@ -111,8 +144,8 @@ void ComWorker::run(){
         convertToDataToProcessorElem(dataElements, receivedMessages);
         // Push to correct queues based on SensorID
         {
-            std::lock_guard guard1(comForwardFlexSPO2Mutex);
-            std::lock_guard guard2(comForwardIMUForceMutex);
+            std::lock_guard guard1(sensorDataProcessingFlexSPO2Mutex);
+            std::lock_guard guard2(sensorDataProcessingImuForceMutex);
 
             for(int i = 0; i < dataElements.size(); i++){
                 placeElementInCorrectQueue(dataElements.at(i));
@@ -139,7 +172,7 @@ void ComWorker::placeElementInCorrectQueue(DataToProcessorElement& elem) {
         case SensorID::PINKY_DIP_FLEX:
         case SensorID::THUMB_MCP_FLEX:
         case SensorID::THUMB_PIP_FLEX:
-            comForwardFlexSPO2Queue->push(elem);
+            sensorDataProcessingFlexSPO2Queue->push(elem);
             break;
 
         case SensorID::HAND_IMU:
@@ -148,7 +181,11 @@ void ComWorker::placeElementInCorrectQueue(DataToProcessorElement& elem) {
         case SensorID::THUMB_IMU:
         case SensorID::RING_IMU:
         case SensorID::PINKY_IMU:
-            comForwardIMUForceQueue->push(elem);
+        case SensorID::POINTER_FORCE:
+        case SensorID::MIDDLE_FORCE:
+        case SensorID::THUMB_FORCE:
+        case SensorID::PINKY_FORCE:
+            sensorDataProcessingImuForceQueue->push(elem);
             break;
 
         default:
