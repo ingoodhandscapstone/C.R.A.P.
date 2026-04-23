@@ -4,7 +4,7 @@ const int Bluetooth::SCAN_ATTEMPTS = 5;
 const int Bluetooth::RECONNECT_ATTEMPTS = 5;
 const int Bluetooth::SCAN_TIMEOUT_MS = 5000;
 
-const SimpleBLE::BluetoothAddress Bluetooth::GLOVE_ADDRESS = SimpleBLE::BluetoothAddress();
+const SimpleBLE::BluetoothAddress Bluetooth::GLOVE_ADDRESS = SimpleBLE::BluetoothAddress("C2:12:34:56:78:9A");
 const SimpleBLE::BluetoothAddress Bluetooth::GRIPPER_ADDRESS = SimpleBLE::BluetoothAddress();
 
 // Glove (no logging)
@@ -17,8 +17,8 @@ const SimpleBLE::BluetoothUUID Bluetooth::gloveSensorUUID = SimpleBLE::Bluetooth
 const SimpleBLE::BluetoothUUID Bluetooth::gyroUUID = SimpleBLE::BluetoothUUID("b74041dd-d096-430d-bc5e-863b4bf82a25");
 const SimpleBLE::BluetoothUUID Bluetooth::flexUUID = SimpleBLE::BluetoothUUID("0a5d19b7-c3f9-4e77-a054-b70ae8205af4");
 const SimpleBLE::BluetoothUUID Bluetooth::spo2UUID = SimpleBLE::BluetoothUUID("db73f8c5-c18a-4586-88b1-b0cba8a4d3a5");
-const SimpleBLE::BluetoothUUID Bluetooth::accelUUID = SimpleBLE::BluetoothUUID("8b57dd02-4fd4-4d61-ad77-1feaa12f4f4e");
-const SimpleBLE::BluetoothUUID Bluetooth::gloveCommandCharUUID = SimpleBLE::BluetoothUUID("fae5ce88-733c-460c-bff5-a3c7a61de43f");
+const SimpleBLE::BluetoothUUID Bluetooth::accelUUID = SimpleBLE::BluetoothUUID("fae5ce88-733c-460c-bff5-a3c7a61de43f");
+const SimpleBLE::BluetoothUUID Bluetooth::gloveCommandCharUUID = SimpleBLE::BluetoothUUID("8b57dd02-4fd4-4d61-ad77-1feaa12f4f4e");
 
 // Gripper (no logging)
 // Service

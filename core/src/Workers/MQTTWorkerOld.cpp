@@ -1,7 +1,4 @@
-#include "MQTTWorker.h"
-
-#include "PahoMQTTClient.h"
-
+#include "MQTTWorkerOld.h"
 
 const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 5;
 const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 5;
@@ -41,55 +38,6 @@ const std::string MQTTWorker::TOPIC_SYSTEM_COMMAND = "system/command";
 const std::string MQTTWorker::TOPIC_SYSTEM_CALIBRATION_STATUS = "system/calibration_status";
 
 
-MQTTWorker::MQTTWorker() :
-    connectionAttemptCount(0),
-    subFailed(false),
-    pubFailed(false),
-    mqttForwardCommandQueue(nullptr),
-    flexSPO2ForwardMQTTQueue(nullptr),
-    imuForceForwardMQTTQueue(nullptr),
-    calibrationStatusQueue(nullptr),
-    mqttForwardCommandMutex(nullptr),
-    flexSPO2ForwardMQTTMutex(nullptr),
-    imuForceForwardMQTTMutex(nullptr),
-    calibrationStatusMutex(nullptr),
-    callbackStateMutex(),
-    clientAccessMutex(),
-    ownedMqttClient(std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID)),
-    mqttClient(ownedMqttClient.get()),
-    calibrationEpochActive(false),
-    currentCalibrationEpoch(0),
-    calibrationMessagesReceived(0),
-    calibrationMessagesRequired(0) {}
-
-
-MQTTWorker::MQTTWorker(MQTTClient * mqttClient) :
-    connectionAttemptCount(0),
-    subFailed(false),
-    pubFailed(false),
-    mqttForwardCommandQueue(nullptr),
-    flexSPO2ForwardMQTTQueue(nullptr),
-    imuForceForwardMQTTQueue(nullptr),
-    calibrationStatusQueue(nullptr),
-    mqttForwardCommandMutex(nullptr),
-    flexSPO2ForwardMQTTMutex(nullptr),
-    imuForceForwardMQTTMutex(nullptr),
-    calibrationStatusMutex(nullptr),
-    callbackStateMutex(),
-    clientAccessMutex(),
-    ownedMqttClient(nullptr),
-    mqttClient(mqttClient),
-    calibrationEpochActive(false),
-    currentCalibrationEpoch(0),
-    calibrationMessagesReceived(0),
-    calibrationMessagesRequired(0) {
-
-    if(this->mqttClient == nullptr){
-        ownedMqttClient = std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID);
-        this->mqttClient = ownedMqttClient.get();
-    }
-}
-
 
 bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue,
                             std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue,
@@ -107,55 +55,92 @@ bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue
     this->flexSPO2ForwardMQTTMutex = flexSPO2ForwardMQTTMutex;
     this->imuForceForwardMQTTMutex = imuForceForwardMQTTMutex;
     this->calibrationStatusMutex = calibrationStatusMutex;
+    
+    // Set connect options
+    connect_opts.set_mqtt_version(MQTTVERSION_3_1_1);
+    connect_opts.set_clean_session(false);
+    connect_opts.set_connect_timeout(3000);
+    connect_opts.set_automatic_reconnect(false);
 
-    mqttClient->setMessageHandler([this](const std::string& topic, const std::string& payload){
-        this->onMessageArrived(topic, payload);
-    });
+    // Set callback for client 
+    cb = Callback(this);
+    // Setup listeners
+    subAL = SubscriberActionListener(this);
+    pubAL = PublisherActionListener(this);
 
-    if(!connectAndSubscribe()){
-        return false;
-    }
+    // client.connect() passing cb, subscription should then be automatic
+    client.connect(connect_opts, nullptr, cb);
 
+    // Use mutex before checking
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Give some time for subscription to occur ??
     std::lock_guard guard(callbackStateMutex);
-    return !subFailed && (connectionAttemptCount < MAX_RECONNECT_ATTEMPTS);
+    
+    // If subscription did not fail and we didn't 
+    return !subFailed && (connectionAttemptCount < MAX_RECONNECT_ATTEMPTS); 
 }
 
 
 void MQTTWorker::run(std::stop_token stopToken){
 
     while(!stopToken.stop_requested()){
+    // Checking connection attempt count
+    // Check for publish fail flag 
+    // Check subscription fail flag (really should only be set if reconnet occurs here)
         {
             std::lock_guard guard(callbackStateMutex);
             if(subFailed || pubFailed || connectionAttemptCount >= MAX_RECONNECT_ATTEMPTS){
-                return;
+                return; // Leave this to main for further handling 
             }
-        }
 
-        bool connected = false;
-        {
-            std::lock_guard clientGuard(clientAccessMutex);
-            connected = mqttClient->isConnected();
-        }
-
-        if(!connected){
-            if(!connectAndSubscribe()){
-                std::lock_guard guard(callbackStateMutex);
-                if(subFailed || connectionAttemptCount >= MAX_RECONNECT_ATTEMPTS){
-                    return;
-                }
-            }
-            continue;
         }
 
         publishData(flexSPO2ForwardMQTTMutex, flexSPO2ForwardMQTTQueue);
         publishData(imuForceForwardMQTTMutex, imuForceForwardMQTTQueue);
         publishCalibrationStatus();
+
     }
+   
+}
+
+void MQTTWorker::Callback::connection_lost(const std::string& cause){
+    reconnect(); // If this fails on_failure() gets called and that will carry out the additional attempts
 }
 
 
-void MQTTWorker::onMessageArrived(const std::string& topic, const std::string& payload){
-    (void)topic;
+void MQTTWorker::Callback::on_failure(const mqtt::token& asyncActionToken) {
+    reconnect();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    
+
+}
+
+void MQTTWorker::Callback::reconnect(){
+    // Assumes this reconnect ends (connect returns immediately) before, in the instance of a failure, the on_failure get called in thread (otherwise would deadlock)
+    {
+        std::lock_guard guard(worker->callbackStateMutex);
+        if(worker->connectionAttemptCount >= MQTTWorker::MAX_RECONNECT_ATTEMPTS){
+            return;
+        }
+        worker->connectionAttemptCount++;
+    }
+
+    {
+        std::lock_guard guard(worker->clientAccessMutex);
+        worker->client.connect(worker->connect_opts, nullptr, *this); // Uses itself as action listener so as to repeatedly call on_failure
+    }
+
+}
+
+void MQTTWorker::Callback::connected(const std::string& cause){
+    std::lock_guard guard(worker->clientAccessMutex);
+    worker->client.subscribe(MQTTWorker::TOPIC_SYSTEM_COMMAND, QOS);
+}
+
+
+// We do not know whether the is a random ascii value but identical underlying number as command or string literal of the number which corresponds to command
+// Chat did this and it will likely be changed
+void MQTTWorker::Callback::message_arrived(mqtt::const_message_ptr message){
+    std::string payload = message.get()->get_payload();
 
     if(payload.empty()){
         return;
@@ -172,89 +157,92 @@ void MQTTWorker::onMessageArrived(const std::string& topic, const std::string& p
         return;
     }
 
-    std::lock_guard commandGuard(*mqttForwardCommandMutex);
-    mqttForwardCommandQueue->push(static_cast<SessionCommand>(value));
+    std::lock_guard commandGuard(*(worker->mqttForwardCommandMutex));
+    worker->mqttForwardCommandQueue->push(static_cast<SessionCommand>(value));
+}
+
+void MQTTWorker::SubscriberActionListener::on_failure(const mqtt::token& asyncActionToken){
+    // Just setting the flag so MQTTWorker can handle it
+    std::lock_guard guard(worker->callbackStateMutex);
+    worker->subFailed = true;
 }
 
 
-bool MQTTWorker::connectAndSubscribe(){
-    while(true){
-        {
-            std::lock_guard stateGuard(callbackStateMutex);
-            if(connectionAttemptCount >= MAX_RECONNECT_ATTEMPTS){
-                return false;
-            }
-        }
 
-        bool connected = false;
-        {
-            std::lock_guard clientGuard(clientAccessMutex);
-            connected = mqttClient->connect();
-        }
 
-        if(connected){
-            break;
-        }
+void MQTTWorker::PublisherActionListener::on_success(const mqtt::token& asyncActionToken){
+    std::lock_guard guard(worker->callbackStateMutex);
 
-        {
-            std::lock_guard stateGuard(callbackStateMutex);
-            connectionAttemptCount++;
-        }
+    int tokenKey = asyncActionToken.get_message_id();
+    mqtt::delivery_token_ptr correspondingToken = worker->lastPublishedTokenMap.at(tokenKey);
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
+    worker->lastPublishedTokenMap.erase(tokenKey);
 
-    bool subscribed = false;
+}
+
+void MQTTWorker::PublisherActionListener::on_failure(const mqtt::token& asyncActionToken){
+    mqtt::const_message_ptr message;
+
+    int tokenKey = asyncActionToken.get_message_id();
     {
-        std::lock_guard clientGuard(clientAccessMutex);
-        subscribed = mqttClient->subscribe(TOPIC_SYSTEM_COMMAND, QOS);
-    }
+        std::lock_guard guard(worker->callbackStateMutex);
+        mqtt::delivery_token_ptr correspondingToken = worker->lastPublishedTokenMap.at(tokenKey);
 
-    if(!subscribed){
-        std::lock_guard stateGuard(callbackStateMutex);
-        subFailed = true;
-    }
+        worker->lastPublishedTokenMap.erase(tokenKey);
 
-    return subscribed;
-}
-
-
-bool MQTTWorker::publishWithRetries(const std::string& topic, const std::string& payload){
-    for(int attempts = 0; attempts <= MAX_PUBLISH_ATTEMPTS; attempts++){
-        bool success = false;
-        {
-            std::lock_guard clientGuard(clientAccessMutex);
-            success = mqttClient->publish(topic, payload, QOS);
+        if(republishAttempts >= MQTTWorker::MAX_PUBLISH_ATTEMPTS){ 
+           worker->pubFailed = true;
+           return;
         }
 
-        if(success){
-            return true;
-        }
+        message = correspondingToken->get_message();
+
+        republishAttempts++;
     }
 
-    std::lock_guard stateGuard(callbackStateMutex);
-    pubFailed = true;
-    return false;
+    mqtt::delivery_token_ptr newToken;
+    {
+        std::lock_guard guard(worker->clientAccessMutex);
+        // Already includes topic 
+        newToken = worker->client.publish(message, nullptr, *this); // Maybe change publishing settings
+    }
+
+    {
+        std::lock_guard guard(worker->callbackStateMutex);
+        worker->lastPublishedTokenMap.insert({newToken->get_message_id(), newToken});
+    }
+
+    
 }
 
 
 void MQTTWorker::publishData(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue){
+    // Access mutex for queue
     std::lock_guard queueGuard(*queueMut);
+    // check empty
     if(elemQueue->empty()){
         return;
     }
 
+    // Access element
     DataOutputElement elem = elemQueue->front();
+    // Get topic 
     std::string topic = getTopic(elem.id);
     if(topic.empty()){
         elemQueue->pop();
         return;
     }
+    // Extract data from elem
+    mqtt::binary_ref data = elem.data;
+    // place into message to send
+    const mqtt::message messageToPub(topic, data);
+    mqtt::const_message_ptr messagePtr = std::make_shared<const mqtt::message>(messageToPub);
 
-    publishWithRetries(topic, elem.data);
+    std::lock_guard clientGuard(clientAccessMutex);
+    client.publish(messagePtr);
     elemQueue->pop();
-}
 
+}
 
 void MQTTWorker::publishCalibrationStatus(){
     CalibrationStatusMessage calibrationMessage;
@@ -285,7 +273,13 @@ void MQTTWorker::publishCalibrationStatus(){
     }
 
     const std::string payload = std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED));
-    publishWithRetries(TOPIC_SYSTEM_CALIBRATION_STATUS, payload);
+    mqtt::const_message_ptr messagePtr = std::make_shared<const mqtt::message>(
+        MQTTWorker::TOPIC_SYSTEM_CALIBRATION_STATUS, payload);
+
+    {
+        std::lock_guard clientGuard(clientAccessMutex);
+        client.publish(messagePtr);
+    }
 
     calibrationEpochActive = false;
     calibrationMessagesReceived = 0;

@@ -82,6 +82,10 @@ void ComWorker::convertToDataToProcessorElem(std::vector<DataToProcessorElement>
                     elem.data.push_back(readUint32(message, DATA_STARTING_INDEX + 8));
                 }
                 break;
+            case SensorType::FORCE:
+                if (message.size() >= DATA_STARTING_INDEX + 4) {
+                    elem.data.push_back(readUint32(message, DATA_STARTING_INDEX));
+                }
 
             default:
                 break;
@@ -183,6 +187,7 @@ void ComWorker::placeElementInCorrectQueue(DataToProcessorElement& elem) {
         case SensorID::PINKY_IMU:
         case SensorID::POINTER_FORCE:
         case SensorID::MIDDLE_FORCE:
+        case SensorID::RING_FORCE:
         case SensorID::THUMB_FORCE:
         case SensorID::PINKY_FORCE:
             sensorDataProcessingImuForceQueue->push(elem);

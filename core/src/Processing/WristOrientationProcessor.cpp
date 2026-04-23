@@ -81,7 +81,6 @@ bool WristOrientationProcessor::initialize(ImuProcessingConfig * config) {
 }
 
 bool WristOrientationProcessor::reset() {
-    ekf.reset();
     sampleCalibrationCount = 0;
     currentTimestamp = 0;
     currentGyro.reset();
@@ -89,7 +88,6 @@ bool WristOrientationProcessor::reset() {
     currentGyroTimestamp.reset();
     currentAccelTimestamp.reset();
     hasPredictedThisCycle = false;
-    currentState = InEKF::SE3<2, 6>();
     initialOrientation = Eigen::Matrix3d::Identity();
     initialGyroBias = Eigen::Vector3d::Zero();
     return true;

@@ -67,6 +67,8 @@ class JointRomProcessor {
 
         bool isCalibrated() {return calibrationSampleCount > (numberOfSamples - 1);}
 
+        bool reset();
+
 
 };
 

@@ -1,6 +1,7 @@
 add_library(blood_oxygen_processor OBJECT src/Processing/BloodOxygenProcessor.cpp)
 add_library(accel_gravity_measure_model OBJECT src/Processing/AccelGravityMeasureModel.cpp)
 add_library(bluetooth OBJECT src/Messaging/Bluetooth.cpp)
+add_library(paho_mqtt_client OBJECT src/Messaging/PahoMQTTClient.cpp)
 add_library(finger_abduction_processor OBJECT src/Processing/FingerAbductionProcessor.cpp)
 add_library(force_processing OBJECT src/Processing/ForceProcessing.cpp)
 add_library(joint_rom_processor OBJECT src/Processing/JointRomProcessor.cpp)
@@ -19,6 +20,9 @@ target_include_directories(bluetooth PUBLIC include/Messaging
                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-src/simpleble/include
                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-src/dependencies/external
                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-build/export)
+target_include_directories(paho_mqtt_client PUBLIC include/Messaging
+                                        PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/pahomqtt-src/include
+                                        PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/pahomqtt-src/externals/paho.mqtt.c/src)
 target_include_directories(finger_abduction_processor PUBLIC include/Processing
                                                       PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
 target_include_directories(force_processing PUBLIC include/Processing
@@ -41,6 +45,7 @@ target_include_directories(mqtt_worker PUBLIC include/Processing
 
 
 target_link_libraries(bluetooth PUBLIC simpleble::simpleble)
+target_link_libraries(paho_mqtt_client PUBLIC PahoMqttCpp::paho-mqttpp3)
 target_link_libraries(accel_gravity_measure_model PUBLIC InEKF::Core)
 target_link_libraries(finger_abduction_processor PUBLIC InEKF::Core PUBLIC InEKF::SE2Models PUBLIC InEKF::Inertial)
 target_link_libraries(wrist_orientation_processor PUBLIC InEKF::Core PUBLIC InEKF::SE2Models PUBLIC InEKF::Inertial)

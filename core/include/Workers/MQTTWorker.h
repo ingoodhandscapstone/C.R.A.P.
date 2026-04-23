@@ -1,76 +1,20 @@
 #ifndef MQTT_WORKER_H
 #define MQTT_WORKER_H
 
-#include "mqtt/async_client.h"
-
+#include "MQTTClient.h"
 #include "QueueMessageTypes.h"
 #include "SessionCommand.h"
 
-#include <queue>
-#include <mutex>
 #include <chrono>
+#include <memory>
+#include <mutex>
+#include <queue>
 #include <stop_token>
-#include <thread>
 #include <string>
-#include <unordered_map>
+#include <thread>
 
 
 class MQTTWorker{
-
-    class Callback : public virtual mqtt::callback, public virtual mqtt::iaction_listener {
-
-
-            MQTTWorker * worker;
-
-            public:
-
-                Callback() : worker(nullptr) {};
-                Callback(MQTTWorker * worker) : worker(worker) {};
-
-            
-            private:
-
-                void connected(const std::string& cause) override; 
-                void connection_lost(const std::string& cause) override; // Attempt to reconnect
-                void message_arrived(mqtt::const_message_ptr message) override; // 
-                void delivery_complete(mqtt::delivery_token_ptr) override {}; // Do Nothing
-                void on_success(const mqtt::token& asyncActionToken) override {}; // Connection Success Do Nothing
-                void on_failure(const mqtt::token& asyncActionToken) override; // Reconnect failure
-
-                void reconnect();
-
-    };
-
-    class PublisherActionListener : public virtual mqtt::iaction_listener {
-
-        MQTTWorker * worker;
-
-        int republishAttempts;
-
-        public:
-
-            PublisherActionListener () : worker(nullptr), republishAttempts(0) {};
-            PublisherActionListener (MQTTWorker * worker) : worker(worker), republishAttempts(0) {};
-
-        void on_success(const mqtt::token& asyncActionToken) override; // On the success
-        void on_failure(const mqtt::token& asyncActionToken) override; // On the failure of publishing
-
-    };
-
-    class SubscriberActionListener : public virtual mqtt::iaction_listener {
-
-        MQTTWorker * worker;
-
-        public:
-
-            SubscriberActionListener () : worker(nullptr) {};
-            SubscriberActionListener (MQTTWorker * worker) : worker(worker) {};
-
-        void on_success(const mqtt::token& asyncActionToken) override {}; // Literally on success on subscribing
-        void on_failure(const mqtt::token& asyncActionToken) override; // Literally failed subscribing
-
-    };
-
     static const int MAX_RECONNECT_ATTEMPTS;
     static const int MAX_PUBLISH_ATTEMPTS;
     static const int QOS;
@@ -113,7 +57,7 @@ class MQTTWorker{
     bool pubFailed;
 
     std::queue<SessionCommand> * mqttForwardCommandQueue;
-    std::queue <DataOutputElement> * flexSPO2ForwardMQTTQueue;
+    std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue;
     std::queue<DataOutputElement> * imuForceForwardMQTTQueue;
     std::queue<CalibrationStatusMessage> * calibrationStatusQueue;
 
@@ -122,54 +66,28 @@ class MQTTWorker{
     std::mutex * imuForceForwardMQTTMutex;
     std::mutex * calibrationStatusMutex;
 
-    std::mutex callbackStateMutex; // For callback-shared member state (flags/counters/maps).
-    std::mutex clientAccessMutex; // For mqtt::async_client calls shared across threads.
+    std::mutex callbackStateMutex;
+    std::mutex clientAccessMutex;
 
-    mqtt::connect_options connect_opts;
-    mqtt::async_client client;
-
-    Callback cb; // Used for reconnection attempts on disconnect 
-    SubscriberActionListener subAL; 
-    PublisherActionListener pubAL; // Use this to verify message actually get published (certain amount of attempts)
-
-    std::unordered_map<int, mqtt::delivery_token_ptr> lastPublishedTokenMap;
+    std::unique_ptr<MQTTClient> ownedMqttClient;
+    MQTTClient * mqttClient;
 
     bool calibrationEpochActive;
     uint32_t currentCalibrationEpoch;
     uint32_t calibrationMessagesReceived;
     uint32_t calibrationMessagesRequired;
 
-    // This assumes SensorID will be apart of of both queue elements
     std::string getTopic(SensorID id);
-  
+    void onMessageArrived(const std::string& topic, const std::string& payload);
+    bool connectAndSubscribe();
+    bool publishWithRetries(const std::string& topic, const std::string& payload);
+
     void publishData(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue);
     void publishCalibrationStatus();
 
     public:
-        MQTTWorker() :
-            mqttForwardCommandQueue(nullptr),
-            flexSPO2ForwardMQTTQueue(nullptr),
-            imuForceForwardMQTTQueue(nullptr),
-            calibrationStatusQueue(nullptr),
-            mqttForwardCommandMutex(nullptr),
-            flexSPO2ForwardMQTTMutex(nullptr),
-            imuForceForwardMQTTMutex(nullptr),
-            calibrationStatusMutex(nullptr),
-            connectionAttemptCount(0),
-            connect_opts(),
-            client(SERVER_URI, CLIENT_ID),
-            cb(),
-            subAL(),
-            pubAL(),
-            callbackStateMutex(),
-            clientAccessMutex(),
-            subFailed(false),
-            pubFailed(false),
-            lastPublishedTokenMap(),
-            calibrationEpochActive(false),
-            currentCalibrationEpoch(0),
-            calibrationMessagesReceived(0),
-            calibrationMessagesRequired(0) {};
+        MQTTWorker();
+        explicit MQTTWorker(MQTTClient * mqttClient);
 
         bool initialize(std::queue<SessionCommand> * mqttForwardCommandQueue,
                         std::queue<DataOutputElement> * flexSPO2ForwardMQTTQueue,
@@ -181,7 +99,6 @@ class MQTTWorker{
                         std::mutex * calibrationStatusMutex);
 
         void run(std::stop_token stopToken);
-
 };
 
 

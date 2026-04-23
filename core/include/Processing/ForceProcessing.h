@@ -63,6 +63,8 @@ class ForceProcessing {
 
         bool calibration(int& digVoltage);
 
+        bool reset();
+
 };
 
 #endif

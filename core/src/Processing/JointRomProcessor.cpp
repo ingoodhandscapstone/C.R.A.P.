@@ -83,3 +83,11 @@ bool JointRomProcessor::getJointAngle(int& digVolt, float& angle){
     return true;
 
 }
+
+bool JointRomProcessor::reset(){
+    calibrationSampleCount = 0;
+    movingAverageVoltage = 0.0f;
+    inputVoltageOffset = 0.0f;
+    previousVoltages.clear();
+    return true;
+}

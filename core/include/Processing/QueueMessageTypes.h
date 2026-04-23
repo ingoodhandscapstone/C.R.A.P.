@@ -10,7 +10,8 @@ enum class SensorType{
    IMU_GYRO,
    IMU_ACCEL,
    FLEX,
-   SPO2
+   SPO2,
+   FORCE
 };
 
 enum class SensorID{
@@ -39,7 +40,8 @@ enum class SensorID{
     MIDDLE_FORCE,
     THUMB_FORCE,
     RING_FORCE,
-    PINKY_FORCE
+    PINKY_FORCE,
+    HAND_IMU_Y
 };
 
 struct DataOutputElement {

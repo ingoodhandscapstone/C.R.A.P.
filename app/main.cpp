@@ -3,6 +3,7 @@
 #include <queue>
 #include <mutex>
 #include <atomic>
+#include <condition_variable>
 
 #include "SensorProcessingLaneWorker.h"
 #include "ComWorker.h"
@@ -18,73 +19,47 @@
 #include "WristOrientationProcessor.h"
 #include "QueueMessageTypes.h"
 #include "SessionCommand.h"
+#include "PahoMQTTClient.h"
+
+namespace {
+ImuProcessingConfig makePlaceholderImuConfig() {
+    ImuProcessingConfig config;
+    config.gyroProcessNoise = Eigen::Vector3d(1e-3, 1e-3, 1e-3);
+    config.accelProcessNoise = Eigen::Vector3d(1e-2, 1e-2, 1e-2);
+    config.accelsBiasNoise = Eigen::Vector3d(1e-5, 1e-5, 1e-5);
+    config.gyroBiasNoise = Eigen::Vector3d(1e-5, 1e-5, 1e-5);
+    config.orthoCorrectionMat = Eigen::Matrix3d::Identity();
+    config.orthoCorrectionBias = Eigen::Vector3d::Zero();
+    config.orientationVariance = Eigen::Vector3d(1e-2, 1e-2, 1e-2);
+    config.accelMeasurementCovariance = Eigen::Matrix3d::Identity() * 1e-2;
+    return config;
+}
+}
 
 
 
 ImuProcessingConfig handImuConfig = {
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero(),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero()
+    makePlaceholderImuConfig()
 };
 
 ImuProcessingConfig pointerImuConfig = {
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero(),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero()
+    makePlaceholderImuConfig()
 };
 
 ImuProcessingConfig middleImuConfig = {
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero(),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero()
+    makePlaceholderImuConfig()
 };
 
 ImuProcessingConfig thumbImuConfig = {
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero(),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero()
+    makePlaceholderImuConfig()
 };
 
 ImuProcessingConfig ringImuConfig = {
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero(),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero()
+    makePlaceholderImuConfig()
 };
 
 ImuProcessingConfig pinkyImuConfig = {
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero(),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Vector3d(0.0, 0.0, 0.0),
-    Eigen::Matrix3d::Zero()
+    makePlaceholderImuConfig()
 };
 
 ResistiveSensorConfig pointerMcpFlexConfig = {
@@ -290,6 +265,7 @@ std::mutex flexSPO2ForwardMQTTMutex;
 std::mutex imuForceForwardMQTTMutex;
 
 Bluetooth bleCom;
+PahoMQTTClient pahoClient;
 ComWorker comWorker;
 MQTTWorker mqttWorker;
 SensorProcessingLaneWorker flexSpo2Worker;
@@ -494,6 +470,16 @@ bool initialize(){
         &calibrationStatusMutex
     );
 
+    
+
+    mqttWorker.initialize(
+
+
+    );
+
+
+
+
     return success;
 }
 
@@ -541,7 +527,7 @@ int main() {
     std::unique_lock<std::mutex> tfLock(threadFailedMutex);
 
     if(!initialize()){
-        return 0;
+        return 1;
     }
 
     std::jthread comThread(comWorkerThreadFunc);

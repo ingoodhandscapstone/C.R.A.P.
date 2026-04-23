@@ -215,7 +215,7 @@ void BloodOxygenProcessor::maxim_heart_rate_and_oxygen_saturation(uint32_t *pun_
                      (n_x_dc_max_idx - an_ir_valley_locs[k]);
             n_x_ac = an_x[an_ir_valley_locs[k]] +
                      n_x_ac / (an_ir_valley_locs[k + 1] - an_ir_valley_locs[k]);
-            n_x_ac = an_x[n_y_dc_max_idx] - n_x_ac;
+            n_x_ac = an_x[n_x_dc_max_idx] - n_x_ac;
 
             n_nume = (n_y_ac * n_x_dc_max) >> 7;
             n_denom = (n_x_ac * n_y_dc_max) >> 7;

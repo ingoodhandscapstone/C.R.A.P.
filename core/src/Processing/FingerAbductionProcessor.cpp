@@ -42,6 +42,7 @@ bool FingerAbductionProcessor::calibrate(Eigen::Vector3d& accels, Eigen::Vector3
     }
 
     sampleCalibrationCount++;
+
     return sampleCalibrationCount >= CALIBRATION_SAMPLE_COUNT;
 
     
@@ -88,6 +89,19 @@ bool FingerAbductionProcessor::initialize(ImuProcessingConfig * config){
     ekf.emplace(&pModel, currentState, InEKF::ERROR::RIGHT);
     ekf->addMeasureModel("accel", &mModel);
 
+    return true;
+}
+
+bool FingerAbductionProcessor::reset() {
+    sampleCalibrationCount = 0;
+    currentTimestamp = 0;
+    currentGyro.reset();
+    currentAccel.reset();
+    currentGyroTimestamp.reset();
+    currentAccelTimestamp.reset();
+    hasPredictedThisCycle = false;
+    initialOrientation = Eigen::Matrix3d::Identity();
+    initialGyroBias = Eigen::Vector3d::Zero();
     return true;
 }
 

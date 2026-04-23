@@ -82,3 +82,11 @@ bool ForceProcessing::getForceOutput(int& digVolt, float& force){
     return true;
 
 }
+
+bool ForceProcessing::reset(){
+    calibrationSampleCount = 0;
+    movingAverageVoltage = 0.0f;
+    inputVoltageOffset = 0.0f;
+    previousVoltages.clear();
+    return true;
+}

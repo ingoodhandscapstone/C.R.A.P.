@@ -5,6 +5,8 @@
 #include <queue>
 #include <stop_token>
 #include <unordered_map>
+#include <chrono>
+#include <vector>
 
 #include "ProcessorConfigs.h"
 #ifndef PROCESSOR_CONFIGS_H
@@ -87,16 +89,52 @@ class SensorProcessingLaneWorker {
     SensorProcessingState state;
     uint32_t currentCalibrationEpoch;
 
+    struct ImuCalibrationState {
+        Eigen::Vector3d accel;
+        Eigen::Vector3d gyro;
+        bool hasAccel;
+        bool hasGyro;
+        bool done;
+    };
+
+    std::vector<SensorID> activeFlexSensors;
+    std::vector<SensorID> activeFingerImuSensors;
+    std::vector<SensorID> activeForceSensors;
+    bool activeSpo2Session;
+    bool activeWristOrientationOutput;
+
+    ImuCalibrationState handImuCalibrationState;
+    ImuCalibrationState pointerImuCalibrationState;
+    ImuCalibrationState middleImuCalibrationState;
+    ImuCalibrationState thumbImuCalibrationState;
+    ImuCalibrationState ringImuCalibrationState;
+    ImuCalibrationState pinkyImuCalibrationState;
+
+    bool pointerForceCalibrationDone;
+    bool middleForceCalibrationDone;
+    bool thumbForceCalibrationDone;
+    bool ringForceCalibrationDone;
+    bool pinkyForceCalibrationDone;
+
+    bool handHasUpdatedInSession;
+
     static std::mutex calibrationEpochMutex;
     static uint32_t calibrationEpochCounter;
     static uint32_t calibrationEpochJoinCount;
     static uint32_t calibrationEpochRequiredCount;
     static bool calibrationEpochOpen;
+    static const std::chrono::milliseconds CALIBRATION_TIMEOUT_MS;
+
+    std::chrono::steady_clock::time_point calibrationStartTime;
 
     bool (SensorProcessingLaneWorker::*calibrationFunc)();
     void (SensorProcessingLaneWorker::*sessionFunc)();
+    void (SensorProcessingLaneWorker::*resetFunc)();
 
+    bool isSessionConfigCommand(SessionCommand command);
     bool isRelevantConfigCommand(SessionCommand command);
+    bool usesFlexSpo2ForCommand(SessionCommand command);
+    bool usesImuForceForCommand(SessionCommand command);
     uint32_t getRequiredCalibrationCount(SessionCommand command);
     uint32_t acquireCalibrationEpoch(uint32_t requiredCount);
     bool readFrontCommand(SessionCommand& command);
@@ -105,6 +143,7 @@ class SensorProcessingLaneWorker {
 
     bool runCalibration();
     void runSession();
+    void runReset();
     void resetProcessingData();
 
 
@@ -112,26 +151,45 @@ class SensorProcessingLaneWorker {
     bool setConfigFunctionFlexSpo2();
     bool setConfigFunctionImuForce();
 
-    // Session specific function to be used (flexSpo2 processor)
-    bool pointerCalibrationFuncFlexSpo2();
-    void pointerSessionFuncFlexSpo2();
+    bool calibrateFlexSession();
+    bool calibrateSpo2Session();
+    bool calibrateImuSession();
+    bool calibrateForceSession();
 
-    // Session specific function to be used (imuForce processor)
-    bool pointerCalibrationFuncImuForce();
-    void pointerSessionFuncImuForce();
+    void runFlexSession();
+    void runSpo2Session();
+    void runImuSession();
+    void runForceSession();
 
-    // Identify sensor for config
-    JointRomProcessor * findPointerSensor(SensorID& id);
-    bool isFlexSpo2PointerConfigCalibrated();
+    void configureFlexSession(SessionCommand command);
+    void configureImuSession(SessionCommand command);
+
+    JointRomProcessor * findFlexSensorProcessor(const SensorID& id);
+    FingerAbductionProcessor * findFingerImuProcessor(const SensorID& id);
+    ForceProcessing * findForceProcessor(const SensorID& id);
+    ImuCalibrationState * findImuCalibrationState(const SensorID& id);
+
+    bool isActiveFlexSensor(const SensorID& id);
+    bool isActiveFingerImuSensor(const SensorID& id);
+    bool isActiveForceSensor(const SensorID& id);
+    bool isHandImuActive();
+    bool areActiveFlexSensorsCalibrated();
+    bool areActiveImuSensorsCalibrated();
+    bool areActiveForceSensorsCalibrated();
 
     // convert to usable data by processors
-    void convertToImuInputData(Eigen::Vector3d& accels, Eigen::Vector3d& gyro,  DataToProcessorElement& elem);
-    void convertToFlexInputData(int& digVoltage, DataToProcessorElement& elem);
-    void convertToSpo2InputData(int& ir, int& red,  DataToProcessorElement& elem);
+    void convertToImuInputData(Eigen::Vector3d& accels, Eigen::Vector3d& gyro, const DataToProcessorElement& elem);
+    void convertToFlexInputData(int& digVoltage, const DataToProcessorElement& elem);
+    void convertToSpo2InputData(int& ir, int& red, const DataToProcessorElement& elem);
 
 
     void resetFlexSPO2Data();
     void resetImuForceData();
+    void resetSessionSelections();
+    void resetImuCalibrationState();
+    void resetForceCalibrationState();
+    void resetFlexSPO2ConfigData();
+    void resetImuForceConfigData();
 
   public:
     SensorProcessingLaneWorker() :
@@ -175,8 +233,27 @@ class SensorProcessingLaneWorker {
         mostRecentConfigCommand(SessionCommand::NONE),
         state(SensorProcessingState::IDLE),
         currentCalibrationEpoch(0),
+        activeFlexSensors(),
+        activeFingerImuSensors(),
+        activeForceSensors(),
+        activeSpo2Session(false),
+        activeWristOrientationOutput(false),
+        handImuCalibrationState{Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false, false, false},
+        pointerImuCalibrationState{Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false, false, false},
+        middleImuCalibrationState{Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false, false, false},
+        thumbImuCalibrationState{Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false, false, false},
+        ringImuCalibrationState{Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false, false, false},
+        pinkyImuCalibrationState{Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false, false, false},
+        pointerForceCalibrationDone(false),
+        middleForceCalibrationDone(false),
+        thumbForceCalibrationDone(false),
+        ringForceCalibrationDone(false),
+        pinkyForceCalibrationDone(false),
+        calibrationStartTime(std::chrono::steady_clock::time_point::min()),
+        handHasUpdatedInSession(false),
         calibrationFunc(nullptr),
-        sessionFunc(nullptr) {}
+        sessionFunc(nullptr),
+        resetFunc(nullptr) {}
 
     void initialize(ProcessingGroup processingGroup,
                     BloodOxygenProcessor * wristSPO2Processor,

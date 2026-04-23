@@ -53,6 +53,7 @@ target_include_directories(app PUBLIC core/include/
 target_link_libraries(app PUBLIC blood_oxygen_processor 
                           PUBLIC accel_gravity_measure_model
                           PUBLIC bluetooth 
+                          PUBLIC paho_mqtt_client
                           PUBLIC finger_abduction_processor 
                           PUBLIC force_processing
                           PUBLIC joint_rom_processor 
