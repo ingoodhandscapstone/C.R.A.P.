@@ -1,5 +1,331 @@
 #include <thread>
 #include <chrono>
+#include <queue>
+#include <mutex>
+#include <atomic>
+
+#include "SensorProcessingLaneWorker.h"
+#include "ComWorker.h"
+#include "MQTTWorker.h"
+
+#include "Communication.h"
+#include "Bluetooth.h"
+#include "BloodOxygenProcessor.h"
+#include "FingerAbductionProcessor.h"
+#include "ForceProcessing.h"
+#include "JointRomProcessor.h"
+#include "ProcessorConfigs.h"
+#include "WristOrientationProcessor.h"
+#include "QueueMessageTypes.h"
+#include "SessionCommand.h"
+
+
+
+ImuProcessingConfig handImuConfig = {
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero(),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero()
+};
+
+ImuProcessingConfig pointerImuConfig = {
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero(),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero()
+};
+
+ImuProcessingConfig middleImuConfig = {
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero(),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero()
+};
+
+ImuProcessingConfig thumbImuConfig = {
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero(),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero()
+};
+
+ImuProcessingConfig ringImuConfig = {
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero(),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero()
+};
+
+ImuProcessingConfig pinkyImuConfig = {
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero(),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Vector3d(0.0, 0.0, 0.0),
+    Eigen::Matrix3d::Zero()
+};
+
+ResistiveSensorConfig pointerMcpFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pointerPipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pointerDipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig middleMcpFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig middlePipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig middleDipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig ringMcpFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig ringPipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig ringDipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pinkyMcpFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pinkyPipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pinkyDipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig thumbMcpFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig thumbPipFlexConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pointerForceConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig middleForceConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig thumbForceConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig ringForceConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+ResistiveSensorConfig pinkyForceConfig = {
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    {0.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 0.0f}
+};
+
+
+
+
+
+
+std::unordered_map<SensorID, ImuProcessingConfig> imuConfigs; // Configs used for imus
+std::unordered_map<SensorID, ResistiveSensorConfig> resistiveSensorConfigs; // Configs used for resistive sensors
+
+
+std::queue<SessionCommand> mqttForwardCommandQueue; // MQTTWorker -> ComWorker (relaying command it received from frontend)
+
+std::queue<SessionCommand> comCommandForwardProcessingFlexSPO2Queue; // ComWorker -> SensorProcessingLaneWorker (relaying session command data to instance)
+std::queue<SessionCommand> comCommandForwardProcessingImuForceQueue; // ComWorker -> SensorProcessingLaneWorker (relaying session command data to instance)
+
+std::queue<DataToProcessorElement> sensorDataProcessingFlexSPO2Queue; // ComWorker -> SensorProcessingLaneWorker (relaying sensor data to flexSpo2 processor)
+std::queue<DataToProcessorElement> sensorDataProcessingImuForceQueue; // ComWorker -> SensorProcessingLaneWorker (relaying sensor data to imuForce processor)
+
+std::queue<CalibrationStatusMessage> calibrationStatusQueue; // SensorProcessingLaneWorker -> MQTTWorker (relaying calibration status to the mqtt worker)
+
+std::queue <DataOutputElement> flexSPO2ForwardMQTTQueue; // SensorProcessingLaneWorker -> MQTTWorker (relaying processed spo2Flex sensor data to MQTTWorker)
+std::queue<DataOutputElement> imuForceForwardMQTTQueue; // SensorProcessingLaneWorker -> MQTTWorker (relaying processed imuForce sensor data to MQTTWorker)
+
+std::mutex mqttForwardCommandMutex;
+std::mutex sensorDataProcessingFlexSPO2Mutex;
+std::mutex sensorDataProcessingImuForceMutex;
+std::mutex comCommandForwardProcessingFlexSPO2Mutex;
+std::mutex comCommandForwardProcessingImuForceMutex;
+std::mutex calibrationStatusMutex;
+std::mutex flexSPO2ForwardMQTTMutex;
+std::mutex imuForceForwardMQTTMutex;
+
+Bluetooth bleCom;
+ComWorker comWorker;
+MQTTWorker mqttWorker;
+SensorProcessingLaneWorker flexSpo2Worker;
+SensorProcessingLaneWorker imuForceWorker;
+
+JointRomProcessor pointerMcpFlex;
+JointRomProcessor pointerPipFlex;
+JointRomProcessor pointerDipFlex;
+JointRomProcessor middleMcpFlex;
+JointRomProcessor middlePipFlex;
+JointRomProcessor middleDipFlex;
+JointRomProcessor ringMcpFlex;
+JointRomProcessor ringPipFlex;
+JointRomProcessor ringDipFlex;
+JointRomProcessor pinkyMcpFlex;
+JointRomProcessor pinkyPipFlex;
+JointRomProcessor pinkyDipFlex;
+JointRomProcessor thumbMcpFlex;
+JointRomProcessor thumbPipFlex;
+
+ForceProcessing pointerForce;
+ForceProcessing middleForce;
+ForceProcessing thumbForce;
+ForceProcessing ringForce;
+ForceProcessing pinkyForce;
+
+FingerAbductionProcessor pointerAbduction;
+FingerAbductionProcessor middleAbduction;
+FingerAbductionProcessor thumbAbduction;
+FingerAbductionProcessor ringAbduction;
+FingerAbductionProcessor pinkyAbduction;
+
+BloodOxygenProcessor bloodOx;
+WristOrientationProcessor wristOrientation;
+
+
 
 
 // mqttForwardCommandQueue
@@ -29,7 +355,206 @@
 
 
 
+
+
+bool initialize(){
+
+    bool success = true; 
+
+    imuConfigs[SensorID::HAND_IMU] = handImuConfig;
+    imuConfigs[SensorID::POINTER_IMU] = pointerImuConfig;
+    imuConfigs[SensorID::MIDDLE_IMU] = middleImuConfig;
+    imuConfigs[SensorID::THUMB_IMU] = thumbImuConfig;
+    imuConfigs[SensorID::RING_IMU] = ringImuConfig;
+    imuConfigs[SensorID::PINKY_IMU] = pinkyImuConfig;
+
+    resistiveSensorConfigs[SensorID::POINTER_MCP_FLEX] = pointerMcpFlexConfig;
+    resistiveSensorConfigs[SensorID::POINTER_PIP_FLEX] = pointerPipFlexConfig;
+    resistiveSensorConfigs[SensorID::POINTER_DIP_FLEX] = pointerDipFlexConfig;
+    resistiveSensorConfigs[SensorID::MIDDLE_MCP_FLEX] = middleMcpFlexConfig;
+    resistiveSensorConfigs[SensorID::MIDDLE_PIP_FLEX] = middlePipFlexConfig;
+    resistiveSensorConfigs[SensorID::MIDDLE_DIP_FLEX] = middleDipFlexConfig;
+    resistiveSensorConfigs[SensorID::RING_MCP_FLEX] = ringMcpFlexConfig;
+    resistiveSensorConfigs[SensorID::RING_PIP_FLEX] = ringPipFlexConfig;
+    resistiveSensorConfigs[SensorID::RING_DIP_FLEX] = ringDipFlexConfig;
+    resistiveSensorConfigs[SensorID::PINKY_MCP_FLEX] = pinkyMcpFlexConfig;
+    resistiveSensorConfigs[SensorID::PINKY_PIP_FLEX] = pinkyPipFlexConfig;
+    resistiveSensorConfigs[SensorID::PINKY_DIP_FLEX] = pinkyDipFlexConfig;
+    resistiveSensorConfigs[SensorID::THUMB_MCP_FLEX] = thumbMcpFlexConfig;
+    resistiveSensorConfigs[SensorID::THUMB_PIP_FLEX] = thumbPipFlexConfig;
+    resistiveSensorConfigs[SensorID::POINTER_FORCE] = pointerForceConfig;
+    resistiveSensorConfigs[SensorID::MIDDLE_FORCE] = middleForceConfig;
+    resistiveSensorConfigs[SensorID::THUMB_FORCE] = thumbForceConfig;
+    resistiveSensorConfigs[SensorID::RING_FORCE] = ringForceConfig;
+    resistiveSensorConfigs[SensorID::PINKY_FORCE] = pinkyForceConfig;
+
+    success = success && bleCom.initialize();
+    success = success && comWorker.initialize(
+        &mqttForwardCommandQueue,
+        &sensorDataProcessingFlexSPO2Queue,
+        &sensorDataProcessingImuForceQueue,
+        &comCommandForwardProcessingFlexSPO2Queue,
+        &comCommandForwardProcessingImuForceQueue,
+        &mqttForwardCommandMutex,
+        &sensorDataProcessingFlexSPO2Mutex,
+        &sensorDataProcessingImuForceMutex,
+        &comCommandForwardProcessingFlexSPO2Mutex,
+        &comCommandForwardProcessingImuForceMutex,
+        &bleCom
+    );
+
+    success = success && mqttWorker.initialize(
+        &mqttForwardCommandQueue,
+        &flexSPO2ForwardMQTTQueue,
+        &imuForceForwardMQTTQueue,
+        &calibrationStatusQueue,
+        &mqttForwardCommandMutex,
+        &flexSPO2ForwardMQTTMutex,
+        &imuForceForwardMQTTMutex,
+        &calibrationStatusMutex
+    );
+
+    flexSpo2Worker.initialize(
+        SensorProcessingLaneWorker::ProcessingGroup::FLEX_SPO2,
+        &bloodOx,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        &pointerMcpFlex,
+        &pointerPipFlex,
+        &pointerDipFlex,
+        &middleMcpFlex,
+        &middlePipFlex,
+        &middleDipFlex,
+        &ringMcpFlex,
+        &ringPipFlex,
+        &ringDipFlex,
+        &pinkyMcpFlex,
+        &pinkyPipFlex,
+        &pinkyDipFlex,
+        &thumbMcpFlex,
+        &thumbPipFlex,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        &imuConfigs,
+        &resistiveSensorConfigs,
+        &flexSPO2ForwardMQTTQueue,
+        &comCommandForwardProcessingFlexSPO2Queue,
+        &sensorDataProcessingFlexSPO2Queue,
+        &calibrationStatusQueue,
+        &flexSPO2ForwardMQTTMutex,
+        &comCommandForwardProcessingFlexSPO2Mutex,
+        &sensorDataProcessingFlexSPO2Mutex,
+        &calibrationStatusMutex
+    );
+
+    imuForceWorker.initialize(
+        SensorProcessingLaneWorker::ProcessingGroup::IMU_FORCE,
+        nullptr,
+        &wristOrientation,
+        &pointerAbduction,
+        &middleAbduction,
+        &thumbAbduction,
+        &ringAbduction,
+        &pinkyAbduction,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        &pointerForce,
+        &middleForce,
+        &thumbForce,
+        &ringForce,
+        &pinkyForce,
+        &imuConfigs,
+        &resistiveSensorConfigs,
+        &imuForceForwardMQTTQueue,
+        &comCommandForwardProcessingImuForceQueue,
+        &sensorDataProcessingImuForceQueue,
+        &calibrationStatusQueue,
+        &imuForceForwardMQTTMutex,
+        &comCommandForwardProcessingImuForceMutex,
+        &sensorDataProcessingImuForceMutex,
+        &calibrationStatusMutex
+    );
+
+    return success;
+}
+
+bool done = false;
+std::mutex threadFailedMutex;
+std::condition_variable threadFailedCV;
+
+
+void comWorkerThreadFunc(std::stop_token stopToken){
+    comWorker.run(stopToken); // Only return if failed or stop requested
+
+    std::lock_guard guard(threadFailedMutex);
+    done = true;
+    threadFailedCV.notify_one();
+
+}
+
+
+void mqttWorkerThreadFunc(std::stop_token stopToken){
+    mqttWorker.run(stopToken); // Only return if failed or stop requested
+
+    std::lock_guard guard(threadFailedMutex);
+    done = true;
+    threadFailedCV.notify_one();
+}
+
+void flexSpo2WorkerThreadFunc(std::stop_token stopToken){
+    flexSpo2Worker.run(stopToken); // Only return if failed or stop requested
+
+    std::lock_guard guard(threadFailedMutex);
+    done = true;
+    threadFailedCV.notify_one();
+}
+
+void imuForceWorkerThreadFunc(std::stop_token stopToken){
+    imuForceWorker.run(stopToken); // Only return if failed or stop requested
+
+    std::lock_guard guard(threadFailedMutex);
+    done = true;
+    threadFailedCV.notify_one();
+}
+
 int main() {
+
+    std::unique_lock<std::mutex> tfLock(threadFailedMutex);
+
+    if(!initialize()){
+        return 0;
+    }
+
+    std::jthread comThread(comWorkerThreadFunc);
+    std::jthread mqttThread(mqttWorkerThreadFunc);
+    std::jthread flexSpo2Thread(flexSpo2WorkerThreadFunc);
+    std::jthread imuForceThread(imuForceWorkerThreadFunc);
+
+    threadFailedCV.wait(tfLock, [&](){return done;});
+
+    comThread.request_stop();
+    mqttThread.request_stop();
+    flexSpo2Thread.request_stop();
+    imuForceThread.request_stop();
 
     return 0;
 }

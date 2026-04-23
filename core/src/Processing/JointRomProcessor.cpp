@@ -51,11 +51,10 @@ void JointRomProcessor::applyMovingAverage(float& voltage){
 
 
 void JointRomProcessor::voltageToAngle(float& angle, std::vector<float>& funcCoef){
-    // For now I am going to assume 3rd order poly for each piecewise
-    // index(3)x^3 + index(2)x^2 + index(1)x + index(0)
-
-    angle = funcCoef.at(3) * std::pow(movingAverageVoltage, 3) + funcCoef.at(2) * std::pow(movingAverageVoltage, 2)
-                + funcCoef.at(1) * movingAverageVoltage + funcCoef.at(0);
+    // 2 order poly assume highest order is first index
+    // a * x^2 + bx + c
+    angle = funcCoef.at(0) * std::pow(movingAverageVoltage, 2) + funcCoef.at(1) * movingAverageVoltage + funcCoef.at(2);
+    
 }
 
 
@@ -76,18 +75,10 @@ bool JointRomProcessor::getJointAngle(int& digVolt, float& angle){
         return false;
     }
 
-    std::map<float, std::vector<float>>& curve = (voltDiff > 0) ? config->loadingPieceCoef : config->unloadingPieceCoef;
+    std::vector<float>& curve = (voltDiff > 0) ? config->loadingPieceCoef : config->unloadingPieceCoef;
 
 
-    auto it = curve.lower_bound(movingAverageVoltage + inputVoltageOffset);
-
-    if(it == curve.end()){
-        it = std::prev(it);
-    } else if(it == curve.begin()){
-        it = std::next(it);
-    }
-
-    voltageToAngle(angle, it->second);
+    voltageToAngle(angle, curve);
 
     return true;
 

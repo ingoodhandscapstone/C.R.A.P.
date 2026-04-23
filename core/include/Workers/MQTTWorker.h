@@ -9,6 +9,7 @@
 #include <queue>
 #include <mutex>
 #include <chrono>
+#include <stop_token>
 #include <thread>
 #include <string>
 #include <unordered_map>
@@ -96,6 +97,11 @@ class MQTTWorker{
     static const std::string TOPIC_ABDUCTION_RING;
     static const std::string TOPIC_ABDUCTION_PINKY;
     static const std::string TOPIC_ABDUCTION_THUMB;
+    static const std::string TOPIC_FORCE_POINTER;
+    static const std::string TOPIC_FORCE_MIDDLE;
+    static const std::string TOPIC_FORCE_THUMB;
+    static const std::string TOPIC_FORCE_RING;
+    static const std::string TOPIC_FORCE_PINKY;
     static const std::string TOPIC_ORIENTATION_WRIST_X;
     static const std::string TOPIC_ORIENTATION_WRIST_Y;
     static const std::string TOPIC_SPO2_WRIST;
@@ -174,7 +180,7 @@ class MQTTWorker{
                         std::mutex * imuForceForwardMQTTMutex,
                         std::mutex * calibrationStatusMutex);
 
-        void run();
+        void run(std::stop_token stopToken);
 
 };
 

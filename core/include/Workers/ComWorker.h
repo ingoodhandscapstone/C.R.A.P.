@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <queue>
+#include <stop_token>
 #include <vector>
 
 #include "Communication.h"
@@ -35,6 +36,18 @@ class ComWorker {
     void placeElementInCorrectQueue(DataToProcessorElement& elem);
 
     public:
+        ComWorker() :
+            mqttForwardCommandMutex(nullptr),
+            sensorDataProcessingFlexSPO2Mutex(nullptr),
+            sensorDataProcessingImuForceMutex(nullptr),
+            comCommandForwardProcessingFlexSPO2Mutex(nullptr),
+            comCommandForwardProcessingImuForceMutex(nullptr),
+            mqttForwardCommandQueue(nullptr),
+            sensorDataProcessingFlexSPO2Queue(nullptr),
+            sensorDataProcessingImuForceQueue(nullptr),
+            comCommandForwardProcessingFlexSPO2Queue(nullptr),
+            comCommandForwardProcessingImuForceQueue(nullptr),
+            com(nullptr) {}
 
         bool initialize(std::queue<SessionCommand> * mqttForwardCommandQueue,
                         std::queue<DataToProcessorElement> * sensorDataProcessingFlexSPO2Queue,
@@ -48,7 +61,7 @@ class ComWorker {
                         std::mutex * comCommandForwardProcessingImuForceMutex,
                         Communication * com);
 
-        void run();
+        void run(std::stop_token stopToken);
 
 
 };

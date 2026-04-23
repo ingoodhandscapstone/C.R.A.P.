@@ -21,9 +21,8 @@ struct ResistiveSensorConfig {
     float adcLSB;
     float deadband;
     float calibratePositionVoltage;
-    // Upper voltage limit of individual piecewise function is what is the key for said individual piecewise coefficient vector
-    std::map<float, std::vector<float>> loadingPieceCoef; // The internal vector will have know amount of coefficients
-    std::map<float, std::vector<float>> unloadingPieceCoef; // The internal vector will have know amount of coefficients
+    std::vector<float> loadingPieceCoef; // The internal vector will have know amount of coefficients
+    std::vector<float> unloadingPieceCoef; // The internal vector will have know amount of coefficients
 };
 
 

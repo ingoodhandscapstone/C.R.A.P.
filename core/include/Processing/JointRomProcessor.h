@@ -52,7 +52,7 @@ class JointRomProcessor {
             movingAverageVoltage(0.0f),
             inputVoltageOffset(0.0f),
             previousVoltages(),
-            config(nullptr) {};
+            config(nullptr){};
 
 
         void initialize(ResistiveSensorConfig * config);

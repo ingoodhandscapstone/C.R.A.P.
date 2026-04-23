@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 project(CrapCode LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -58,7 +58,6 @@ target_link_libraries(app PUBLIC blood_oxygen_processor
                           PUBLIC joint_rom_processor 
                           PUBLIC wrist_orientation_processor
                           PUBLIC com_worker
-                          PUBLIC sensor_processing_worker
                           PUBLIC sensor_processing_lane_worker
                           PUBLIC mqtt_worker
                           PUBLIC simpleble::simpleble

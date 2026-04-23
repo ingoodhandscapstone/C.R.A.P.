@@ -8,7 +8,34 @@ uint32_t SensorProcessingLaneWorker::calibrationEpochRequiredCount = 0;
 bool SensorProcessingLaneWorker::calibrationEpochOpen = false;
 
 
-void SensorProcessingLaneWorker::initialize(std::unordered_map<SensorID, ImuProcessingConfig> * imuConfigs,
+void SensorProcessingLaneWorker::initialize(ProcessingGroup processingGroup,
+                                            BloodOxygenProcessor * wristSPO2Processor,
+                                            WristOrientationProcessor * handIMUProcessor,
+                                            FingerAbductionProcessor * pointerIMUProcessor,
+                                            FingerAbductionProcessor * middleIMUProcessor,
+                                            FingerAbductionProcessor * thumbIMUProcessor,
+                                            FingerAbductionProcessor * ringIMUProcessor,
+                                            FingerAbductionProcessor * pinkyIMUProcessor,
+                                            JointRomProcessor * pointerMCPFlexProcessor,
+                                            JointRomProcessor * pointerPIPFlexProcessor,
+                                            JointRomProcessor * pointerDIPFlexProcessor,
+                                            JointRomProcessor * middleMCPFlexProcessor,
+                                            JointRomProcessor * middlePIPFlexProcessor,
+                                            JointRomProcessor * middleDIPFlexProcessor,
+                                            JointRomProcessor * ringMCPFlexProcessor,
+                                            JointRomProcessor * ringPIPFlexProcessor,
+                                            JointRomProcessor * ringDIPFlexProcessor,
+                                            JointRomProcessor * pinkyMCPFlexProcessor,
+                                            JointRomProcessor * pinkyPIPFlexProcessor,
+                                            JointRomProcessor * pinkyDIPFlexProcessor,
+                                            JointRomProcessor * thumbMCPFlexProcessor,
+                                            JointRomProcessor * thumbPIPFlexProcessor,
+                                            ForceProcessing * pointerForceProcessor,
+                                            ForceProcessing * middleForceProcessor,
+                                            ForceProcessing * thumbForceProcessor,
+                                            ForceProcessing * ringForceProcessor,
+                                            ForceProcessing * pinkyForceProcessor,
+                                            std::unordered_map<SensorID, ImuProcessingConfig> * imuConfigs,
                                             std::unordered_map<SensorID, ResistiveSensorConfig> * resistiveSensorConfigs,
                                             std::queue<DataOutputElement> * forwardMQTTQueue,
                                             std::queue<SessionCommand> * commandQueue,
@@ -18,6 +45,33 @@ void SensorProcessingLaneWorker::initialize(std::unordered_map<SensorID, ImuProc
                                             std::mutex * commandMutex,
                                             std::mutex * sensorDataMutex,
                                             std::mutex * calibrationStatusMutex){
+    this->processingGroup = processingGroup;
+    this->wristSPO2Processor = wristSPO2Processor;
+    this->handIMUProcessor = handIMUProcessor;
+    this->pointerIMUProcessor = pointerIMUProcessor;
+    this->middleIMUProcessor = middleIMUProcessor;
+    this->thumbIMUProcessor = thumbIMUProcessor;
+    this->ringIMUProcessor = ringIMUProcessor;
+    this->pinkyIMUProcessor = pinkyIMUProcessor;
+    this->pointerMCPFlexProcessor = pointerMCPFlexProcessor;
+    this->pointerPIPFlexProcessor = pointerPIPFlexProcessor;
+    this->pointerDIPFlexProcessor = pointerDIPFlexProcessor;
+    this->middleMCPFlexProcessor = middleMCPFlexProcessor;
+    this->middlePIPFlexProcessor = middlePIPFlexProcessor;
+    this->middleDIPFlexProcessor = middleDIPFlexProcessor;
+    this->ringMCPFlexProcessor = ringMCPFlexProcessor;
+    this->ringPIPFlexProcessor = ringPIPFlexProcessor;
+    this->ringDIPFlexProcessor = ringDIPFlexProcessor;
+    this->pinkyMCPFlexProcessor = pinkyMCPFlexProcessor;
+    this->pinkyPIPFlexProcessor = pinkyPIPFlexProcessor;
+    this->pinkyDIPFlexProcessor = pinkyDIPFlexProcessor;
+    this->thumbMCPFlexProcessor = thumbMCPFlexProcessor;
+    this->thumbPIPFlexProcessor = thumbPIPFlexProcessor;
+    this->pointerForceProcessor = pointerForceProcessor;
+    this->middleForceProcessor = middleForceProcessor;
+    this->thumbForceProcessor = thumbForceProcessor;
+    this->ringForceProcessor = ringForceProcessor;
+    this->pinkyForceProcessor = pinkyForceProcessor;
     this->imuConfigs = imuConfigs;
     this->resistiveSensorConfigs = resistiveSensorConfigs;
     this->forwardMQTTQueue = forwardMQTTQueue;
@@ -33,34 +87,87 @@ void SensorProcessingLaneWorker::initialize(std::unordered_map<SensorID, ImuProc
     state = SensorProcessingState::IDLE;
     currentCalibrationEpoch = 0;
 
-    // WRIST_SPO2 is intentionally skipped: BloodOxygenProcessor currently has no initialize() API.
-    handIMUProcessor.initialize(&(imuConfigs->at(SensorID::HAND_IMU)));
-    pointerIMUProcessor.initialize(&(imuConfigs->at(SensorID::POINTER_IMU)));
-    middleIMUProcessor.initialize(&(imuConfigs->at(SensorID::MIDDLE_IMU)));
-    thumbIMUProcessor.initialize(&(imuConfigs->at(SensorID::THUMB_IMU)));
-    ringIMUProcessor.initialize(&(imuConfigs->at(SensorID::RING_IMU)));
-    pinkyIMUProcessor.initialize(&(imuConfigs->at(SensorID::PINKY_IMU)));
+    if(imuConfigs != nullptr){
+        if(handIMUProcessor != nullptr){
+            handIMUProcessor->initialize(&(imuConfigs->at(SensorID::HAND_IMU)));
+        }
+        if(pointerIMUProcessor != nullptr){
+            pointerIMUProcessor->initialize(&(imuConfigs->at(SensorID::POINTER_IMU)));
+        }
+        if(middleIMUProcessor != nullptr){
+            middleIMUProcessor->initialize(&(imuConfigs->at(SensorID::MIDDLE_IMU)));
+        }
+        if(thumbIMUProcessor != nullptr){
+            thumbIMUProcessor->initialize(&(imuConfigs->at(SensorID::THUMB_IMU)));
+        }
+        if(ringIMUProcessor != nullptr){
+            ringIMUProcessor->initialize(&(imuConfigs->at(SensorID::RING_IMU)));
+        }
+        if(pinkyIMUProcessor != nullptr){
+            pinkyIMUProcessor->initialize(&(imuConfigs->at(SensorID::PINKY_IMU)));
+        }
+    }
 
-    pointerMCPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_MCP_FLEX)));
-    pointerPIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_PIP_FLEX)));
-    pointerDIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_DIP_FLEX)));
-    middleMCPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_MCP_FLEX)));
-    middlePIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_PIP_FLEX)));
-    middleDIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_DIP_FLEX)));
-    ringMCPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::RING_MCP_FLEX)));
-    ringPIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::RING_PIP_FLEX)));
-    ringDIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::RING_DIP_FLEX)));
-    pinkyMCPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_MCP_FLEX)));
-    pinkyPIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_PIP_FLEX)));
-    pinkyDIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_DIP_FLEX)));
-    thumbMCPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::THUMB_MCP_FLEX)));
-    thumbPIPFlexProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::THUMB_PIP_FLEX)));
+    if(resistiveSensorConfigs != nullptr){
+        if(pointerMCPFlexProcessor != nullptr){
+            pointerMCPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_MCP_FLEX)));
+        }
+        if(pointerPIPFlexProcessor != nullptr){
+            pointerPIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_PIP_FLEX)));
+        }
+        if(pointerDIPFlexProcessor != nullptr){
+            pointerDIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_DIP_FLEX)));
+        }
+        if(middleMCPFlexProcessor != nullptr){
+            middleMCPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_MCP_FLEX)));
+        }
+        if(middlePIPFlexProcessor != nullptr){
+            middlePIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_PIP_FLEX)));
+        }
+        if(middleDIPFlexProcessor != nullptr){
+            middleDIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_DIP_FLEX)));
+        }
+        if(ringMCPFlexProcessor != nullptr){
+            ringMCPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::RING_MCP_FLEX)));
+        }
+        if(ringPIPFlexProcessor != nullptr){
+            ringPIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::RING_PIP_FLEX)));
+        }
+        if(ringDIPFlexProcessor != nullptr){
+            ringDIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::RING_DIP_FLEX)));
+        }
+        if(pinkyMCPFlexProcessor != nullptr){
+            pinkyMCPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_MCP_FLEX)));
+        }
+        if(pinkyPIPFlexProcessor != nullptr){
+            pinkyPIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_PIP_FLEX)));
+        }
+        if(pinkyDIPFlexProcessor != nullptr){
+            pinkyDIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_DIP_FLEX)));
+        }
+        if(thumbMCPFlexProcessor != nullptr){
+            thumbMCPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::THUMB_MCP_FLEX)));
+        }
+        if(thumbPIPFlexProcessor != nullptr){
+            thumbPIPFlexProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::THUMB_PIP_FLEX)));
+        }
 
-    pointerForceProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_FORCE)));
-    middleForceProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_FORCE)));
-    thumbForceProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::THUMB_FORCE)));
-    ringForceProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::RING_FORCE)));
-    pinkyForceProcessor.initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_FORCE)));
+        if(pointerForceProcessor != nullptr){
+            pointerForceProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::POINTER_FORCE)));
+        }
+        if(middleForceProcessor != nullptr){
+            middleForceProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::MIDDLE_FORCE)));
+        }
+        if(thumbForceProcessor != nullptr){
+            thumbForceProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::THUMB_FORCE)));
+        }
+        if(ringForceProcessor != nullptr){
+            ringForceProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::RING_FORCE)));
+        }
+        if(pinkyForceProcessor != nullptr){
+            pinkyForceProcessor->initialize(&(resistiveSensorConfigs->at(SensorID::PINKY_FORCE)));
+        }
+    }
 
  
 }
@@ -158,8 +265,8 @@ void SensorProcessingLaneWorker::resetProcessingData(){
     }
 }
 
-void SensorProcessingLaneWorker::run(){
-    while(true){
+void SensorProcessingLaneWorker::run(std::stop_token stopToken){
+    while(!stopToken.stop_requested()){
         switch(state){
             case SensorProcessingState::IDLE: {
                 SessionCommand command = SessionCommand::NONE;
@@ -342,14 +449,12 @@ bool SensorProcessingLaneWorker::pointerCalibrationFuncFlexSpo2(){
 
     convertToFlexInputData(digVolt, elem);
     
-    bool success = true;
-    JointRomProcessor& pointerProc = findPointerSensor(elem.id, success);
-
-    if(!success){
+    JointRomProcessor * pointerProc = findPointerSensor(elem.id);
+    if(pointerProc == nullptr){
         return false; 
     }
 
-    pointerProc.calibration(digVolt);
+    pointerProc->calibration(digVolt);
 
     return isFlexSpo2PointerConfigCalibrated();
 
@@ -362,7 +467,7 @@ bool SensorProcessingLaneWorker::pointerCalibrationFuncFlexSpo2(){
 }
 
 
-JointRomProcessor& SensorProcessingLaneWorker::findPointerSensor(SensorID& id, bool& success){
+JointRomProcessor * SensorProcessingLaneWorker::findPointerSensor(SensorID& id){
     if(SensorID::POINTER_MCP_FLEX == id){
         return pointerMCPFlexProcessor;
     } else if(SensorID::POINTER_PIP_FLEX == id){
@@ -371,13 +476,17 @@ JointRomProcessor& SensorProcessingLaneWorker::findPointerSensor(SensorID& id, b
         return pointerDIPFlexProcessor;
     }
 
-    success = false;
-    return pointerDIPFlexProcessor; // return something that will not be used
+    return nullptr;
 }
 
 
 bool SensorProcessingLaneWorker::isFlexSpo2PointerConfigCalibrated(){
-    return pointerDIPFlexProcessor.isCalibrated() && pointerPIPFlexProcessor.isCalibrated() && pointerMCPFlexProcessor.isCalibrated();
+    return pointerDIPFlexProcessor != nullptr &&
+           pointerPIPFlexProcessor != nullptr &&
+           pointerMCPFlexProcessor != nullptr &&
+           pointerDIPFlexProcessor->isCalibrated() &&
+           pointerPIPFlexProcessor->isCalibrated() &&
+           pointerMCPFlexProcessor->isCalibrated();
 }
 
 
@@ -425,6 +534,10 @@ void SensorProcessingLaneWorker::convertToSpo2InputData(int& ir, int& red, DataT
 }
 
 bool SensorProcessingLaneWorker::pointerCalibrationFuncImuForce(){
+    if(pointerIMUProcessor == nullptr || handIMUProcessor == nullptr){
+        return false;
+    }
+
     DataToProcessorElement elem;
     {
         std::lock_guard guard(*sensorDataMutex);
@@ -474,13 +587,13 @@ bool SensorProcessingLaneWorker::pointerCalibrationFuncImuForce(){
     }
 
     if(pointerHasAccel && pointerHasGyro){
-        pointerDone = pointerIMUProcessor.calibrate(pointerAccel, pointerGyro);
+        pointerDone = pointerIMUProcessor->calibrate(pointerAccel, pointerGyro);
         pointerHasAccel = false;
         pointerHasGyro = false;
     }
 
     if(handHasAccel && handHasGyro){
-        handDone = handIMUProcessor.calibrate(handAccel, handGyro);
+        handDone = handIMUProcessor->calibrate(handAccel, handGyro);
         handHasAccel = false;
         handHasGyro = false;
     }
@@ -489,6 +602,10 @@ bool SensorProcessingLaneWorker::pointerCalibrationFuncImuForce(){
 }
 
 void SensorProcessingLaneWorker::pointerSessionFuncImuForce(){
+    if(pointerIMUProcessor == nullptr || handIMUProcessor == nullptr){
+        return;
+    }
+
     DataToProcessorElement elem;
     {
         std::lock_guard guard(*sensorDataMutex);
@@ -510,17 +627,17 @@ void SensorProcessingLaneWorker::pointerSessionFuncImuForce(){
 
     if(elem.id == SensorID::POINTER_IMU){
         if(elem.type == SensorType::IMU_ACCEL){
-            pointerIMUProcessor.setAccel(accels, elem.timestamp);
+            pointerIMUProcessor->setAccel(accels, elem.timestamp);
         } else if(elem.type == SensorType::IMU_GYRO){
-            pointerIMUProcessor.setGyro(gyro, elem.timestamp);
+            pointerIMUProcessor->setGyro(gyro, elem.timestamp);
         } else {
             return;
         }
     } else {
         if(elem.type == SensorType::IMU_ACCEL){
-            handIMUProcessor.setAccel(accels, elem.timestamp);
+            handIMUProcessor->setAccel(accels, elem.timestamp);
         } else if(elem.type == SensorType::IMU_GYRO){
-            handIMUProcessor.setGyro(gyro, elem.timestamp);
+            handIMUProcessor->setGyro(gyro, elem.timestamp);
         } else {
             return;
         }
@@ -528,16 +645,16 @@ void SensorProcessingLaneWorker::pointerSessionFuncImuForce(){
 
     static bool handHasUpdated = false;
 
-    if(handIMUProcessor.hasGyroAndAccel()){
-        handIMUProcessor.predict();
-        handIMUProcessor.update();
+    if(handIMUProcessor->hasGyroAndAccel()){
+        handIMUProcessor->predict();
+        handIMUProcessor->update();
         handHasUpdated = true;
     }
 
     bool pointerUpdated = false;
-    if(pointerIMUProcessor.hasGyroAndAccel()){
-        pointerIMUProcessor.predict();
-        pointerIMUProcessor.update();
+    if(pointerIMUProcessor->hasGyroAndAccel()){
+        pointerIMUProcessor->predict();
+        pointerIMUProcessor->update();
         pointerUpdated = true;
     }
 
@@ -546,8 +663,8 @@ void SensorProcessingLaneWorker::pointerSessionFuncImuForce(){
     }
 
     float angle = 0.0f;
-    Eigen::Matrix3d handOrientation = handIMUProcessor.getHandOrientationMatrix();
-    pointerIMUProcessor.getAngle(angle, handOrientation);
+    Eigen::Matrix3d handOrientation = handIMUProcessor->getHandOrientationMatrix();
+    pointerIMUProcessor->getAngle(angle, handOrientation);
 
     DataOutputElement outputElem;
     outputElem.id = SensorID::POINTER_IMU;
@@ -584,15 +701,13 @@ void SensorProcessingLaneWorker::pointerSessionFuncFlexSpo2(){
 
     convertToFlexInputData(digVolt, elem);
     
-    bool success = true;
-    JointRomProcessor& pointerProc = findPointerSensor(elem.id, success);
-
-    if(!success){
+    JointRomProcessor * pointerProc = findPointerSensor(elem.id);
+    if(pointerProc == nullptr){
         return; 
     }
 
     float angle = 0.0f;
-    if(!pointerProc.getJointAngle(digVolt, angle)){
+    if(!pointerProc->getJointAngle(digVolt, angle)){
         return;
     }
 

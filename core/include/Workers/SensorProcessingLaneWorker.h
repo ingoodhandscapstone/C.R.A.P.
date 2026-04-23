@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <queue>
+#include <stop_token>
 #include <unordered_map>
 
 #include "ProcessorConfigs.h"
@@ -39,35 +40,35 @@ class SensorProcessingLaneWorker {
     ProcessingGroup processingGroup;
 
     // Sensor processors mapped from SensorID.
-    BloodOxygenProcessor wristSPO2Processor;          // WRIST_SPO2
+    BloodOxygenProcessor * wristSPO2Processor;          // WRIST_SPO2
 
-    WristOrientationProcessor handIMUProcessor;       // HAND_IMU
-    FingerAbductionProcessor pointerIMUProcessor;     // POINTER_IMU
-    FingerAbductionProcessor middleIMUProcessor;      // MIDDLE_IMU
-    FingerAbductionProcessor thumbIMUProcessor;       // THUMB_IMU
-    FingerAbductionProcessor ringIMUProcessor;        // RING_IMU
-    FingerAbductionProcessor pinkyIMUProcessor;       // PINKY_IMU
+    WristOrientationProcessor * handIMUProcessor;       // HAND_IMU
+    FingerAbductionProcessor * pointerIMUProcessor;     // POINTER_IMU
+    FingerAbductionProcessor * middleIMUProcessor;      // MIDDLE_IMU
+    FingerAbductionProcessor * thumbIMUProcessor;       // THUMB_IMU
+    FingerAbductionProcessor * ringIMUProcessor;        // RING_IMU
+    FingerAbductionProcessor * pinkyIMUProcessor;       // PINKY_IMU
 
-    JointRomProcessor pointerMCPFlexProcessor;        // POINTER_MCP_FLEX
-    JointRomProcessor pointerPIPFlexProcessor;        // POINTER_PIP_FLEX
-    JointRomProcessor pointerDIPFlexProcessor;        // POINTER_DIP_FLEX
-    JointRomProcessor middleMCPFlexProcessor;         // MIDDLE_MCP_FLEX
-    JointRomProcessor middlePIPFlexProcessor;         // MIDDLE_PIP_FLEX
-    JointRomProcessor middleDIPFlexProcessor;         // MIDDLE_DIP_FLEX
-    JointRomProcessor ringMCPFlexProcessor;           // RING_MCP_FLEX
-    JointRomProcessor ringPIPFlexProcessor;           // RING_PIP_FLEX
-    JointRomProcessor ringDIPFlexProcessor;           // RING_DIP_FLEX
-    JointRomProcessor pinkyMCPFlexProcessor;          // PINKY_MCP_FLEX
-    JointRomProcessor pinkyPIPFlexProcessor;          // PINKY_PIP_FLEX
-    JointRomProcessor pinkyDIPFlexProcessor;          // PINKY_DIP_FLEX
-    JointRomProcessor thumbMCPFlexProcessor;          // THUMB_MCP_FLEX
-    JointRomProcessor thumbPIPFlexProcessor;          // THUMB_PIP_FLEX
+    JointRomProcessor * pointerMCPFlexProcessor;        // POINTER_MCP_FLEX
+    JointRomProcessor * pointerPIPFlexProcessor;        // POINTER_PIP_FLEX
+    JointRomProcessor * pointerDIPFlexProcessor;        // POINTER_DIP_FLEX
+    JointRomProcessor * middleMCPFlexProcessor;         // MIDDLE_MCP_FLEX
+    JointRomProcessor * middlePIPFlexProcessor;         // MIDDLE_PIP_FLEX
+    JointRomProcessor * middleDIPFlexProcessor;         // MIDDLE_DIP_FLEX
+    JointRomProcessor * ringMCPFlexProcessor;           // RING_MCP_FLEX
+    JointRomProcessor * ringPIPFlexProcessor;           // RING_PIP_FLEX
+    JointRomProcessor * ringDIPFlexProcessor;           // RING_DIP_FLEX
+    JointRomProcessor * pinkyMCPFlexProcessor;          // PINKY_MCP_FLEX
+    JointRomProcessor * pinkyPIPFlexProcessor;          // PINKY_PIP_FLEX
+    JointRomProcessor * pinkyDIPFlexProcessor;          // PINKY_DIP_FLEX
+    JointRomProcessor * thumbMCPFlexProcessor;          // THUMB_MCP_FLEX
+    JointRomProcessor * thumbPIPFlexProcessor;          // THUMB_PIP_FLEX
 
-    ForceProcessing pointerForceProcessor;            // POINTER_FORCE
-    ForceProcessing middleForceProcessor;             // MIDDLE_FORCE
-    ForceProcessing thumbForceProcessor;              // THUMB_FORCE
-    ForceProcessing ringForceProcessor;               // RING_FORCE
-    ForceProcessing pinkyForceProcessor;              // PINKY_FORCE
+    ForceProcessing * pointerForceProcessor;            // POINTER_FORCE
+    ForceProcessing * middleForceProcessor;             // MIDDLE_FORCE
+    ForceProcessing * thumbForceProcessor;              // THUMB_FORCE
+    ForceProcessing * ringForceProcessor;               // RING_FORCE
+    ForceProcessing * pinkyForceProcessor;              // PINKY_FORCE
 
     std::queue<DataOutputElement> * forwardMQTTQueue;
     std::queue<SessionCommand> * commandQueue;
@@ -120,7 +121,7 @@ class SensorProcessingLaneWorker {
     void pointerSessionFuncImuForce();
 
     // Identify sensor for config
-    JointRomProcessor& findPointerSensor(SensorID& id, bool& success);
+    JointRomProcessor * findPointerSensor(SensorID& id);
     bool isFlexSpo2PointerConfigCalibrated();
 
     // convert to usable data by processors
@@ -133,34 +134,34 @@ class SensorProcessingLaneWorker {
     void resetImuForceData();
 
   public:
-    SensorProcessingLaneWorker(ProcessingGroup processingGroup) :
-        processingGroup(processingGroup),
-        wristSPO2Processor(),
-        handIMUProcessor(),
-        pointerIMUProcessor(),
-        middleIMUProcessor(),
-        thumbIMUProcessor(),
-        ringIMUProcessor(),
-        pinkyIMUProcessor(),
-        pointerMCPFlexProcessor(),
-        pointerPIPFlexProcessor(),
-        pointerDIPFlexProcessor(),
-        middleMCPFlexProcessor(),
-        middlePIPFlexProcessor(),
-        middleDIPFlexProcessor(),
-        ringMCPFlexProcessor(),
-        ringPIPFlexProcessor(),
-        ringDIPFlexProcessor(),
-        pinkyMCPFlexProcessor(),
-        pinkyPIPFlexProcessor(),
-        pinkyDIPFlexProcessor(),
-        thumbMCPFlexProcessor(),
-        thumbPIPFlexProcessor(),
-        pointerForceProcessor(),
-        middleForceProcessor(),
-        thumbForceProcessor(),
-        ringForceProcessor(),
-        pinkyForceProcessor(),
+    SensorProcessingLaneWorker() :
+        processingGroup(ProcessingGroup::FLEX_SPO2),
+        wristSPO2Processor(nullptr),
+        handIMUProcessor(nullptr),
+        pointerIMUProcessor(nullptr),
+        middleIMUProcessor(nullptr),
+        thumbIMUProcessor(nullptr),
+        ringIMUProcessor(nullptr),
+        pinkyIMUProcessor(nullptr),
+        pointerMCPFlexProcessor(nullptr),
+        pointerPIPFlexProcessor(nullptr),
+        pointerDIPFlexProcessor(nullptr),
+        middleMCPFlexProcessor(nullptr),
+        middlePIPFlexProcessor(nullptr),
+        middleDIPFlexProcessor(nullptr),
+        ringMCPFlexProcessor(nullptr),
+        ringPIPFlexProcessor(nullptr),
+        ringDIPFlexProcessor(nullptr),
+        pinkyMCPFlexProcessor(nullptr),
+        pinkyPIPFlexProcessor(nullptr),
+        pinkyDIPFlexProcessor(nullptr),
+        thumbMCPFlexProcessor(nullptr),
+        thumbPIPFlexProcessor(nullptr),
+        pointerForceProcessor(nullptr),
+        middleForceProcessor(nullptr),
+        thumbForceProcessor(nullptr),
+        ringForceProcessor(nullptr),
+        pinkyForceProcessor(nullptr),
         forwardMQTTQueue(nullptr),
         commandQueue(nullptr),
         sensorDataQueue(nullptr),
@@ -177,7 +178,34 @@ class SensorProcessingLaneWorker {
         calibrationFunc(nullptr),
         sessionFunc(nullptr) {}
 
-    void initialize(std::unordered_map<SensorID, ImuProcessingConfig> * imuConfigs,
+    void initialize(ProcessingGroup processingGroup,
+                    BloodOxygenProcessor * wristSPO2Processor,
+                    WristOrientationProcessor * handIMUProcessor,
+                    FingerAbductionProcessor * pointerIMUProcessor,
+                    FingerAbductionProcessor * middleIMUProcessor,
+                    FingerAbductionProcessor * thumbIMUProcessor,
+                    FingerAbductionProcessor * ringIMUProcessor,
+                    FingerAbductionProcessor * pinkyIMUProcessor,
+                    JointRomProcessor * pointerMCPFlexProcessor,
+                    JointRomProcessor * pointerPIPFlexProcessor,
+                    JointRomProcessor * pointerDIPFlexProcessor,
+                    JointRomProcessor * middleMCPFlexProcessor,
+                    JointRomProcessor * middlePIPFlexProcessor,
+                    JointRomProcessor * middleDIPFlexProcessor,
+                    JointRomProcessor * ringMCPFlexProcessor,
+                    JointRomProcessor * ringPIPFlexProcessor,
+                    JointRomProcessor * ringDIPFlexProcessor,
+                    JointRomProcessor * pinkyMCPFlexProcessor,
+                    JointRomProcessor * pinkyPIPFlexProcessor,
+                    JointRomProcessor * pinkyDIPFlexProcessor,
+                    JointRomProcessor * thumbMCPFlexProcessor,
+                    JointRomProcessor * thumbPIPFlexProcessor,
+                    ForceProcessing * pointerForceProcessor,
+                    ForceProcessing * middleForceProcessor,
+                    ForceProcessing * thumbForceProcessor,
+                    ForceProcessing * ringForceProcessor,
+                    ForceProcessing * pinkyForceProcessor,
+                    std::unordered_map<SensorID, ImuProcessingConfig> * imuConfigs,
                     std::unordered_map<SensorID, ResistiveSensorConfig> * resistiveSensorConfigs,
                     std::queue<DataOutputElement> * forwardMQTTQueue,
                     std::queue<SessionCommand> * commandQueue,
@@ -188,7 +216,7 @@ class SensorProcessingLaneWorker {
                     std::mutex * sensorDataMutex,
                     std::mutex * calibrationStatusMutex);
 
-    void run();
+    void run(std::stop_token stopToken);
 };
 
 

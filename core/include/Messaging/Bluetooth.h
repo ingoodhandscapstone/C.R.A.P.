@@ -69,6 +69,23 @@ class Bluetooth : public Communication {
 
 
     public:
+        Bluetooth() :
+            adapter(SimpleBLE::Adapter()),
+            glove(SimpleBLE::Peripheral()),
+            gripper(SimpleBLE::Peripheral()),
+            gyroMessageStorage(),
+            accelMessageStorage(),
+            flexMessageStorage(),
+            spo2MessageStorage(),
+            forceMessageStorage(),
+            gyroDataMutex(),
+            accelDataMutex(),
+            spo2DataMutex(),
+            flexDataMutex(),
+            forceDataMutex(),
+            gloveAccessMutex(),
+            gripperAccessMutex() {}
+
         bool initialize();
         bool read(const Endpoints& endpoint, std::vector<uint8_t>& message) override;
         bool write(const Endpoints& endpoint, std::vector<uint8_t>& message) override;

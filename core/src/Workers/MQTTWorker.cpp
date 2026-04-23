@@ -1,8 +1,5 @@
 #include "MQTTWorker.h"
 
-#include <algorithm>
-#include <cctype>
-
 const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 5;
 const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 5;
 const int MQTTWorker::QOS = 1;
@@ -29,6 +26,11 @@ const std::string MQTTWorker::TOPIC_ABDUCTION_MIDDLE = "abduction/MIDDLE";
 const std::string MQTTWorker::TOPIC_ABDUCTION_RING = "abduction/RING";
 const std::string MQTTWorker::TOPIC_ABDUCTION_PINKY = "abduction/PINKY";
 const std::string MQTTWorker::TOPIC_ABDUCTION_THUMB = "abduction/THUMB";
+const std::string MQTTWorker::TOPIC_FORCE_POINTER = "force/POINTER";
+const std::string MQTTWorker::TOPIC_FORCE_MIDDLE = "force/MIDDLE";
+const std::string MQTTWorker::TOPIC_FORCE_THUMB = "force/THUMB";
+const std::string MQTTWorker::TOPIC_FORCE_RING = "force/RING";
+const std::string MQTTWorker::TOPIC_FORCE_PINKY = "force/PINKY";
 const std::string MQTTWorker::TOPIC_ORIENTATION_WRIST_X = "orientation/WRIST_X";
 const std::string MQTTWorker::TOPIC_ORIENTATION_WRIST_Y = "orientation/WRIST_Y";
 const std::string MQTTWorker::TOPIC_SPO2_WRIST = "spo2/WRIST";
@@ -78,9 +80,9 @@ bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue
 }
 
 
-void MQTTWorker::run(){
+void MQTTWorker::run(std::stop_token stopToken){
 
-    while(true){
+    while(!stopToken.stop_requested()){
     // Checking connection attempt count
     // Check for publish fail flag 
     // Check subscription fail flag (really should only be set if reconnet occurs here)
@@ -138,38 +140,25 @@ void MQTTWorker::Callback::connected(const std::string& cause){
 // We do not know whether the is a random ascii value but identical underlying number as command or string literal of the number which corresponds to command
 // Chat did this and it will likely be changed
 void MQTTWorker::Callback::message_arrived(mqtt::const_message_ptr message){
-    std::lock_guard commandGuard(*(worker->mqttForwardCommandMutex));
     std::string payload = message.get()->get_payload();
 
     if(payload.empty()){
         return;
     }
 
-    auto isValidCommandValue = [](unsigned int value) {
-        return value <= static_cast<unsigned int>(SessionCommand::SESSION_CONFIG_GRIPPER);
-    };
-
-    // Accept either numeric text payloads (e.g. "5") or raw single-byte command payloads.
-    const bool isNumericPayload = std::all_of(payload.begin(), payload.end(), [](unsigned char c){
-        return std::isdigit(c) != 0;
-    });
-
-    if(isNumericPayload){
-        try {
-            const unsigned int value = static_cast<unsigned int>(std::stoul(payload));
-            if(isValidCommandValue(value)){
-                worker->mqttForwardCommandQueue->push(static_cast<SessionCommand>(value));
-            }
-        } catch (...) {
-            // Ignore malformed command payloads.
-        }
+    unsigned int value = 0;
+    try {
+        value = static_cast<unsigned int>(std::stoul(payload));
+    } catch (...) {
         return;
     }
 
-    const unsigned int rawValue = static_cast<unsigned int>(static_cast<uint8_t>(payload[0]));
-    if(isValidCommandValue(rawValue)){
-        worker->mqttForwardCommandQueue->push(static_cast<SessionCommand>(rawValue));
+    if(value > static_cast<unsigned int>(SessionCommand::SESSION_CONFIG_GRIPPER)){
+        return;
     }
+
+    std::lock_guard commandGuard(*(worker->mqttForwardCommandMutex));
+    worker->mqttForwardCommandQueue->push(static_cast<SessionCommand>(value));
 }
 
 void MQTTWorker::SubscriberActionListener::on_failure(const mqtt::token& asyncActionToken){
@@ -238,7 +227,11 @@ void MQTTWorker::publishData(std::mutex * queueMut, std::queue<DataOutputElement
     // Access element
     DataOutputElement elem = elemQueue->front();
     // Get topic 
-    mqtt::string_ref topic = getTopic(elem.id);
+    std::string topic = getTopic(elem.id);
+    if(topic.empty()){
+        elemQueue->pop();
+        return;
+    }
     // Extract data from elem
     mqtt::binary_ref data = elem.data;
     // place into message to send
@@ -247,6 +240,7 @@ void MQTTWorker::publishData(std::mutex * queueMut, std::queue<DataOutputElement
 
     std::lock_guard clientGuard(clientAccessMutex);
     client.publish(messagePtr);
+    elemQueue->pop();
 
 }
 
@@ -294,5 +288,63 @@ void MQTTWorker::publishCalibrationStatus(){
 
 
 std::string MQTTWorker::getTopic(SensorID id){
-    
+    switch(id){
+        case SensorID::WRIST_SPO2:
+            return TOPIC_SPO2_WRIST;
+
+        case SensorID::HAND_IMU:
+            return TOPIC_ORIENTATION_WRIST_X;
+        case SensorID::POINTER_IMU:
+            return TOPIC_ABDUCTION_POINTER;
+        case SensorID::MIDDLE_IMU:
+            return TOPIC_ABDUCTION_MIDDLE;
+        case SensorID::THUMB_IMU:
+            return TOPIC_ABDUCTION_THUMB;
+        case SensorID::RING_IMU:
+            return TOPIC_ABDUCTION_RING;
+        case SensorID::PINKY_IMU:
+            return TOPIC_ABDUCTION_PINKY;
+
+        case SensorID::POINTER_MCP_FLEX:
+            return TOPIC_JOINT_POINTER_MCP;
+        case SensorID::POINTER_PIP_FLEX:
+            return TOPIC_JOINT_POINTER_PIP;
+        case SensorID::POINTER_DIP_FLEX:
+            return TOPIC_JOINT_POINTER_DIP;
+        case SensorID::MIDDLE_MCP_FLEX:
+            return TOPIC_JOINT_MIDDLE_MCP;
+        case SensorID::MIDDLE_PIP_FLEX:
+            return TOPIC_JOINT_MIDDLE_PIP;
+        case SensorID::MIDDLE_DIP_FLEX:
+            return TOPIC_JOINT_MIDDLE_DIP;
+        case SensorID::RING_MCP_FLEX:
+            return TOPIC_JOINT_RING_MCP;
+        case SensorID::RING_PIP_FLEX:
+            return TOPIC_JOINT_RING_PIP;
+        case SensorID::RING_DIP_FLEX:
+            return TOPIC_JOINT_RING_DIP;
+        case SensorID::PINKY_MCP_FLEX:
+            return TOPIC_JOINT_PINKY_MCP;
+        case SensorID::PINKY_PIP_FLEX:
+            return TOPIC_JOINT_PINKY_PIP;
+        case SensorID::PINKY_DIP_FLEX:
+            return TOPIC_JOINT_PINKY_DIP;
+        case SensorID::THUMB_MCP_FLEX:
+            return TOPIC_JOINT_THUMB_MCP;
+        case SensorID::THUMB_PIP_FLEX:
+            return TOPIC_JOINT_THUMB_PIP;
+
+        case SensorID::POINTER_FORCE:
+            return TOPIC_FORCE_POINTER;
+        case SensorID::MIDDLE_FORCE:
+            return TOPIC_FORCE_MIDDLE;
+        case SensorID::THUMB_FORCE:
+            return TOPIC_FORCE_THUMB;
+        case SensorID::RING_FORCE:
+            return TOPIC_FORCE_RING;
+        case SensorID::PINKY_FORCE:
+            return TOPIC_FORCE_PINKY;
+    }
+
+    return "";
 }

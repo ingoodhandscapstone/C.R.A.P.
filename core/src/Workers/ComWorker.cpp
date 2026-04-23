@@ -94,8 +94,8 @@ void ComWorker::convertToDataToProcessorElem(std::vector<DataToProcessorElement>
 }
 
 
-void ComWorker::run(){
-    while(true){
+void ComWorker::run(std::stop_token stopToken){
+    while(!stopToken.stop_requested()){
 
         // Lock mutex for mqttForwardCommandMutex
         // Check the queue for new message
@@ -113,8 +113,8 @@ void ComWorker::run(){
 
         if(!noMessage){
             {
-            std::lock_guard guard(*comCommandForwardProcessingFlexSPO2Mutex);
-            std::lock_guard guard(*comCommandForwardProcessingImuForceMutex);
+            std::lock_guard guardFlex(*comCommandForwardProcessingFlexSPO2Mutex);
+            std::lock_guard guardSpo2(*comCommandForwardProcessingImuForceMutex);
 
             comCommandForwardProcessingFlexSPO2Queue->push(command);
             comCommandForwardProcessingImuForceQueue->push(command);
@@ -144,8 +144,8 @@ void ComWorker::run(){
         convertToDataToProcessorElem(dataElements, receivedMessages);
         // Push to correct queues based on SensorID
         {
-            std::lock_guard guard1(sensorDataProcessingFlexSPO2Mutex);
-            std::lock_guard guard2(sensorDataProcessingImuForceMutex);
+            std::lock_guard guard1(*sensorDataProcessingFlexSPO2Mutex);
+            std::lock_guard guard2(*sensorDataProcessingImuForceMutex);
 
             for(int i = 0; i < dataElements.size(); i++){
                 placeElementInCorrectQueue(dataElements.at(i));
