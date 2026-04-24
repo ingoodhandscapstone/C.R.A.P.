@@ -7,6 +7,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 include(FetchContent)
+include(CTest)
+
+enable_testing()
 
 # Already included by the Inekf
 # FetchContent_Declare(
@@ -38,8 +41,19 @@ FetchContent_Declare(
     GIT_TAG v0.1.0
 )
 
+if(BUILD_TESTING)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG v1.16.0
+)
+endif()
 
 FetchContent_MakeAvailable(pahomqtt simpleble inekf)
+
+if(BUILD_TESTING)
+FetchContent_MakeAvailable(googletest)
+endif()
 
 
 add_subdirectory(core)
@@ -67,3 +81,7 @@ target_link_libraries(app PUBLIC blood_oxygen_processor
                           PUBLIC InEKF::Inertial
                           PUBLIC PahoMqttCpp::paho-mqttpp3
                           PUBLIC Threads::Threads)
+
+if(BUILD_TESTING)
+add_subdirectory(tests)
+endif()
