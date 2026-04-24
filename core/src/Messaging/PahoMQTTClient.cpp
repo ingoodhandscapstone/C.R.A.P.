@@ -1,4 +1,5 @@
 #include "PahoMQTTClient.h"
+#include "Logger.h"
 
 #include <utility>
 
@@ -35,13 +36,36 @@ PahoMQTTClient::PahoMQTTClient(const std::string& serverURI, const std::string& 
 bool PahoMQTTClient::connect() {
     std::lock_guard guard(clientAccessMutex);
 
+    Logger::instance().info("PahoMQTTClient", "Attempting MQTT transport connect.", false);
     try {
         client.connect(connectOptions)->wait();
+    } catch (const mqtt::exception& ex) {
+        Logger::instance().error("PahoMQTTClient",
+                                 std::string("MQTT transport connect threw mqtt::exception: ") + ex.what(),
+                                 false);
+        return false;
+    } catch (const std::exception& ex) {
+        Logger::instance().error("PahoMQTTClient",
+                                 std::string("MQTT transport connect threw std::exception: ") + ex.what(),
+                                 false);
+        return false;
     } catch (...) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "MQTT transport connect threw unknown exception.",
+                                 false);
         return false;
     }
 
-    return client.is_connected();
+    const bool connected = client.is_connected();
+    if(connected){
+        Logger::instance().info("PahoMQTTClient", "MQTT transport connect successful.", false);
+    } else {
+        Logger::instance().warn("PahoMQTTClient",
+                                "MQTT transport connect returned without exception but client is not connected.",
+                                false);
+    }
+
+    return connected;
 }
 
 
@@ -49,15 +73,36 @@ bool PahoMQTTClient::subscribe(const std::string& topic, int qos) {
     std::lock_guard guard(clientAccessMutex);
 
     if(!client.is_connected()){
+        Logger::instance().warn("PahoMQTTClient",
+                                "Subscribe failed because MQTT transport is not connected. topic=" + topic,
+                                false);
         return false;
     }
 
     try {
         client.subscribe(topic, qos)->wait();
+    } catch (const mqtt::exception& ex) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "Subscribe failed for topic '" + topic +
+                                     "' mqtt::exception: " + ex.what(),
+                                 false);
+        return false;
+    } catch (const std::exception& ex) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "Subscribe failed for topic '" + topic +
+                                     "' std::exception: " + ex.what(),
+                                 false);
+        return false;
     } catch (...) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "Subscribe failed for topic '" + topic + "' unknown exception.",
+                                 false);
         return false;
     }
 
+    Logger::instance().info("PahoMQTTClient",
+                            "Subscribe successful for topic '" + topic + "'.",
+                            false);
     return true;
 }
 
@@ -66,12 +111,30 @@ bool PahoMQTTClient::publish(const std::string& topic, const std::string& payloa
     std::lock_guard guard(clientAccessMutex);
 
     if(!client.is_connected()){
+        Logger::instance().warn("PahoMQTTClient",
+                                "Publish failed because MQTT transport is not connected. topic=" + topic,
+                                false);
         return false;
     }
 
     try {
         client.publish(topic, payload.data(), payload.size(), qos, false)->wait();
+    } catch (const mqtt::exception& ex) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "Publish failed for topic '" + topic +
+                                     "' mqtt::exception: " + ex.what(),
+                                 false);
+        return false;
+    } catch (const std::exception& ex) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "Publish failed for topic '" + topic +
+                                     "' std::exception: " + ex.what(),
+                                 false);
+        return false;
     } catch (...) {
+        Logger::instance().error("PahoMQTTClient",
+                                 "Publish failed for topic '" + topic + "' unknown exception.",
+                                 false);
         return false;
     }
 
@@ -104,8 +167,11 @@ void PahoMQTTClient::onMessageArrived(const std::string& topic, const std::strin
 }
 
 
-void PahoMQTTClient::onConnectionLost() {
+void PahoMQTTClient::onConnectionLost(const std::string& cause) {
     // Reconnect policy lives outside the transport wrapper.
+    Logger::instance().warn("PahoMQTTClient",
+                            "MQTT connection lost. cause=" + cause,
+                            false);
 }
 
 
@@ -114,7 +180,7 @@ void PahoMQTTClient::Callback::connection_lost(const std::string& cause){
         return;
     }
 
-    mqttClient->onConnectionLost();
+    mqttClient->onConnectionLost(cause);
 }
 
 

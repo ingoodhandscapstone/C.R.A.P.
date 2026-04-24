@@ -4,6 +4,8 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <iostream>
+#include <string>
 
 #include "SensorProcessingLaneWorker.h"
 #include "ComWorker.h"
@@ -20,18 +22,65 @@
 #include "QueueMessageTypes.h"
 #include "SessionCommand.h"
 #include "PahoMQTTClient.h"
+#include "Logger.h"
 
 namespace {
-ImuProcessingConfig makePlaceholderImuConfig() {
+constexpr float FLEX_NOISE_FLOOR = 0.0f;
+constexpr float FLEX_ADC_LSB_VOLTS = 0.001f; // 1 mV/LSB
+constexpr float FLEX_DEADBAND = 0.0f; // drift
+constexpr float FLEX_CALIBRATION_VOLTAGE = 0.0f;
+
+ImuProcessingConfig makeImuConfig(double gyroProcessNoiseStd,
+                                  double accelProcessNoiseStd,
+                                  double accelBiasNoiseStd,
+                                  double gyroBiasNoiseStd,
+                                  double orientationVariance,
+                                  double accelMeasurementStd) {
     ImuProcessingConfig config;
-    config.gyroProcessNoise = Eigen::Vector3d(1e-3, 1e-3, 1e-3);
-    config.accelProcessNoise = Eigen::Vector3d(1e-2, 1e-2, 1e-2);
-    config.accelsBiasNoise = Eigen::Vector3d(1e-5, 1e-5, 1e-5);
-    config.gyroBiasNoise = Eigen::Vector3d(1e-5, 1e-5, 1e-5);
+    config.gyroProcessNoise = Eigen::Vector3d::Constant(gyroProcessNoiseStd);
+    config.accelProcessNoise = Eigen::Vector3d::Constant(accelProcessNoiseStd);
+    config.accelsBiasNoise = Eigen::Vector3d::Constant(accelBiasNoiseStd);
+    config.gyroBiasNoise = Eigen::Vector3d::Constant(gyroBiasNoiseStd);
     config.orthoCorrectionMat = Eigen::Matrix3d::Identity();
     config.orthoCorrectionBias = Eigen::Vector3d::Zero();
-    config.orientationVariance = Eigen::Vector3d(1e-2, 1e-2, 1e-2);
-    config.accelMeasurementCovariance = Eigen::Matrix3d::Identity() * 1e-2;
+    config.orientationVariance = Eigen::Vector3d::Constant(orientationVariance);
+    const double accelMeasurementVariance = accelMeasurementStd * accelMeasurementStd;
+    config.accelMeasurementCovariance = Eigen::Matrix3d::Identity() * accelMeasurementVariance;
+    return config;
+}
+
+ImuProcessingConfig makeHandImuConfig() {
+    return makeImuConfig(
+        0.02,  // gyro process noise std (rad/s)
+        0.20,  // accel process noise std (m/s^2)
+        0.01,  // accel bias noise std (m/s^2)
+        0.001, // gyro bias noise std (rad/s)
+        0.05,  // orientation variance
+        0.35   // accel measurement std (m/s^2)
+    );
+}
+
+ImuProcessingConfig makeFingerImuConfig() {
+    return makeImuConfig(
+        0.03,  // gyro process noise std (rad/s)
+        0.25,  // accel process noise std (m/s^2)
+        0.015, // accel bias noise std (m/s^2)
+        0.0015,// gyro bias noise std (rad/s)
+        0.07,  // orientation variance
+        0.40   // accel measurement std (m/s^2)
+    );
+}
+
+ResistiveSensorConfig makeFlexSensorConfig() {
+    ResistiveSensorConfig config;
+    config.noiseFloor = FLEX_NOISE_FLOOR;
+    config.adcLSB = FLEX_ADC_LSB_VOLTS;
+    config.deadband = FLEX_DEADBAND;
+    config.calibratePositionVoltage = FLEX_CALIBRATION_VOLTAGE;
+
+    // angle = -16.1*x^2 + 66*x + 18.4
+    config.loadingPieceCoef = {-16.1f, 66.0f, 18.4f};
+    config.unloadingPieceCoef = {-16.1f, 66.0f, 18.4f};
     return config;
 }
 }
@@ -39,153 +88,83 @@ ImuProcessingConfig makePlaceholderImuConfig() {
 
 
 ImuProcessingConfig handImuConfig = {
-    makePlaceholderImuConfig()
+    makeHandImuConfig()
 };
 
 ImuProcessingConfig pointerImuConfig = {
-    makePlaceholderImuConfig()
+    makeFingerImuConfig()
 };
 
 ImuProcessingConfig middleImuConfig = {
-    makePlaceholderImuConfig()
+    makeFingerImuConfig()
 };
 
 ImuProcessingConfig thumbImuConfig = {
-    makePlaceholderImuConfig()
+    makeFingerImuConfig()
 };
 
 ImuProcessingConfig ringImuConfig = {
-    makePlaceholderImuConfig()
+    makeFingerImuConfig()
 };
 
 ImuProcessingConfig pinkyImuConfig = {
-    makePlaceholderImuConfig()
+    makeFingerImuConfig()
 };
 
 ResistiveSensorConfig pointerMcpFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig pointerPipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig pointerDipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig middleMcpFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig middlePipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig middleDipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig ringMcpFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig ringPipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig ringDipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig pinkyMcpFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig pinkyPipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig pinkyDipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig thumbMcpFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig thumbPipFlexConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeFlexSensorConfig()
 };
 
 ResistiveSensorConfig pointerForceConfig = {
@@ -265,7 +244,6 @@ std::mutex flexSPO2ForwardMQTTMutex;
 std::mutex imuForceForwardMQTTMutex;
 
 Bluetooth bleCom;
-PahoMQTTClient pahoClient;
 ComWorker comWorker;
 MQTTWorker mqttWorker;
 SensorProcessingLaneWorker flexSpo2Worker;
@@ -303,7 +281,6 @@ WristOrientationProcessor wristOrientation;
 
 
 
-
 // mqttForwardCommandQueue
 // comForwardFlexSPO2Queue
 // comForwardIMUForceQueue
@@ -335,8 +312,6 @@ WristOrientationProcessor wristOrientation;
 
 bool initialize(){
 
-    bool success = true; 
-
     imuConfigs[SensorID::HAND_IMU] = handImuConfig;
     imuConfigs[SensorID::POINTER_IMU] = pointerImuConfig;
     imuConfigs[SensorID::MIDDLE_IMU] = middleImuConfig;
@@ -364,8 +339,12 @@ bool initialize(){
     resistiveSensorConfigs[SensorID::RING_FORCE] = ringForceConfig;
     resistiveSensorConfigs[SensorID::PINKY_FORCE] = pinkyForceConfig;
 
-    success = success && bleCom.initialize();
-    success = success && comWorker.initialize(
+    if(!bleCom.initialize()){
+        Logger::instance().error("Main", "Bluetooth initialization failed.", true);
+        return false;
+    }
+
+    if(!comWorker.initialize(
         &mqttForwardCommandQueue,
         &sensorDataProcessingFlexSPO2Queue,
         &sensorDataProcessingImuForceQueue,
@@ -377,9 +356,12 @@ bool initialize(){
         &comCommandForwardProcessingFlexSPO2Mutex,
         &comCommandForwardProcessingImuForceMutex,
         &bleCom
-    );
+    )){
+        Logger::instance().error("Main", "ComWorker initialization failed.", false);
+        return false;
+    }
 
-    success = success && mqttWorker.initialize(
+    if(!mqttWorker.initialize(
         &mqttForwardCommandQueue,
         &flexSPO2ForwardMQTTQueue,
         &imuForceForwardMQTTQueue,
@@ -388,7 +370,14 @@ bool initialize(){
         &flexSPO2ForwardMQTTMutex,
         &imuForceForwardMQTTMutex,
         &calibrationStatusMutex
-    );
+    )){
+        std::string reason = mqttWorker.getFailureReason();
+        if(reason.empty()){
+            reason = "Unknown MQTT initialization failure.";
+        }
+        Logger::instance().error("Main", "MQTTWorker initialization failed: " + reason, true);
+        return false;
+    }
 
     flexSpo2Worker.initialize(
         SensorProcessingLaneWorker::ProcessingGroup::FLEX_SPO2,
@@ -470,17 +459,8 @@ bool initialize(){
         &calibrationStatusMutex
     );
 
-    
-
-    mqttWorker.initialize(
-
-
-    );
-
-
-
-
-    return success;
+    Logger::instance().info("Main", "Initialization completed successfully.", false);
+    return true;
 }
 
 bool done = false;
@@ -490,6 +470,12 @@ std::condition_variable threadFailedCV;
 
 void comWorkerThreadFunc(std::stop_token stopToken){
     comWorker.run(stopToken); // Only return if failed or stop requested
+
+    if(!stopToken.stop_requested()){
+        Logger::instance().error("Main",
+                                 "ComWorker thread exited unexpectedly.",
+                                 true);
+    }
 
     std::lock_guard guard(threadFailedMutex);
     done = true;
@@ -501,6 +487,16 @@ void comWorkerThreadFunc(std::stop_token stopToken){
 void mqttWorkerThreadFunc(std::stop_token stopToken){
     mqttWorker.run(stopToken); // Only return if failed or stop requested
 
+    if(!stopToken.stop_requested()){
+        std::string reason = mqttWorker.getFailureReason();
+        if(reason.empty()){
+            reason = "MQTTWorker exited unexpectedly without explicit failure reason.";
+        }
+        Logger::instance().error("Main",
+                                 "MQTTWorker thread failed: " + reason,
+                                 true);
+    }
+
     std::lock_guard guard(threadFailedMutex);
     done = true;
     threadFailedCV.notify_one();
@@ -508,6 +504,16 @@ void mqttWorkerThreadFunc(std::stop_token stopToken){
 
 void flexSpo2WorkerThreadFunc(std::stop_token stopToken){
     flexSpo2Worker.run(stopToken); // Only return if failed or stop requested
+
+    if(!stopToken.stop_requested()){
+        std::string reason = flexSpo2Worker.getFailureReason();
+        if(reason.empty()){
+            reason = "Flex/SPO2 worker exited unexpectedly without explicit failure reason.";
+        }
+        Logger::instance().error("Main",
+                                 "Flex/SPO2 worker thread failed: " + reason,
+                                 true);
+    }
 
     std::lock_guard guard(threadFailedMutex);
     done = true;
@@ -517,12 +523,23 @@ void flexSpo2WorkerThreadFunc(std::stop_token stopToken){
 void imuForceWorkerThreadFunc(std::stop_token stopToken){
     imuForceWorker.run(stopToken); // Only return if failed or stop requested
 
+    if(!stopToken.stop_requested()){
+        std::string reason = imuForceWorker.getFailureReason();
+        if(reason.empty()){
+            reason = "IMU/Force worker exited unexpectedly without explicit failure reason.";
+        }
+        Logger::instance().error("Main",
+                                 "IMU/Force worker thread failed: " + reason,
+                                 true);
+    }
+
     std::lock_guard guard(threadFailedMutex);
     done = true;
     threadFailedCV.notify_one();
 }
 
 int main() {
+    Logger::instance().initialize("logs");
 
     std::unique_lock<std::mutex> tfLock(threadFailedMutex);
 
@@ -535,7 +552,22 @@ int main() {
     std::jthread flexSpo2Thread(flexSpo2WorkerThreadFunc);
     std::jthread imuForceThread(imuForceWorkerThreadFunc);
 
-    threadFailedCV.wait(tfLock, [&](){return done;});
+    std::cout << "Press q then Enter to quit.\n";
+    while(!threadFailedCV.wait_for(tfLock, std::chrono::milliseconds(100), [](){return done;})){
+        if(std::cin.rdbuf()->in_avail() <= 0){
+            continue;
+        }
+
+        std::string input;
+        if(!std::getline(std::cin, input)){
+            continue;
+        }
+
+        if(input == "q" || input == "Q"){
+            done = true;
+            threadFailedCV.notify_one();
+        }
+    }
 
     comThread.request_stop();
     mqttThread.request_stop();

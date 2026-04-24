@@ -1,14 +1,15 @@
 #include "MQTTWorker.h"
 
+#include "Logger.h"
 #include "PahoMQTTClient.h"
 
 
-const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 5;
-const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 5;
+const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 10;
+const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 10;
 const int MQTTWorker::QOS = 1;
 
-const std::string MQTTWorker::SERVER_URI = "";
-const std::string MQTTWorker::CLIENT_ID = "";
+const std::string MQTTWorker::SERVER_URI = "tcp://10.176.139.26:1883";
+const std::string MQTTWorker::CLIENT_ID = "esp32_glove_main";
 
 const std::string MQTTWorker::TOPIC_JOINT_POINTER_MCP = "joint/POINTER_MCP";
 const std::string MQTTWorker::TOPIC_JOINT_POINTER_PIP = "joint/POINTER_PIP";
@@ -55,8 +56,11 @@ MQTTWorker::MQTTWorker() :
     calibrationStatusMutex(nullptr),
     callbackStateMutex(),
     clientAccessMutex(),
+    failureStateMutex(),
     ownedMqttClient(std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID)),
     mqttClient(ownedMqttClient.get()),
+    workerFailed(false),
+    failureReason(),
     calibrationEpochActive(false),
     currentCalibrationEpoch(0),
     calibrationMessagesReceived(0),
@@ -77,8 +81,11 @@ MQTTWorker::MQTTWorker(MQTTClient * mqttClient) :
     calibrationStatusMutex(nullptr),
     callbackStateMutex(),
     clientAccessMutex(),
+    failureStateMutex(),
     ownedMqttClient(nullptr),
     mqttClient(mqttClient),
+    workerFailed(false),
+    failureReason(),
     calibrationEpochActive(false),
     currentCalibrationEpoch(0),
     calibrationMessagesReceived(0),
@@ -99,6 +106,7 @@ bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue
                             std::mutex * flexSPO2ForwardMQTTMutex,
                             std::mutex * imuForceForwardMQTTMutex,
                             std::mutex * calibrationStatusMutex) {
+    clearFailure();
     this->mqttForwardCommandQueue = mqttForwardCommandQueue;
     this->flexSPO2ForwardMQTTQueue = flexSPO2ForwardMQTTQueue;
     this->imuForceForwardMQTTQueue = imuForceForwardMQTTQueue;
@@ -108,11 +116,18 @@ bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue
     this->imuForceForwardMQTTMutex = imuForceForwardMQTTMutex;
     this->calibrationStatusMutex = calibrationStatusMutex;
 
+    Logger::instance().info("MQTTWorker",
+                            "Initializing MQTT worker and attaching message handler.",
+                            false);
+
     mqttClient->setMessageHandler([this](const std::string& topic, const std::string& payload){
         this->onMessageArrived(topic, payload);
     });
 
     if(!connectAndSubscribe()){
+        if(!hasFailure()){
+            setFailure("MQTT initialize failed during connect/subscribe.");
+        }
         return false;
     }
 
@@ -179,12 +194,23 @@ void MQTTWorker::onMessageArrived(const std::string& topic, const std::string& p
 
 bool MQTTWorker::connectAndSubscribe(){
     while(true){
+        int attemptNumber = 0;
         {
             std::lock_guard stateGuard(callbackStateMutex);
             if(connectionAttemptCount >= MAX_RECONNECT_ATTEMPTS){
+                setFailure("Failed to connect to MQTT broker after max reconnect attempts.");
+                Logger::instance().error("MQTTWorker",
+                                         "Failed to connect to MQTT broker after max reconnect attempts.",
+                                         true);
                 return false;
             }
+            attemptNumber = connectionAttemptCount + 1;
         }
+
+        Logger::instance().info("MQTTWorker",
+                                "MQTT connect attempt " + std::to_string(attemptNumber) + "/" +
+                                    std::to_string(MAX_RECONNECT_ATTEMPTS),
+                                false);
 
         bool connected = false;
         {
@@ -193,6 +219,10 @@ bool MQTTWorker::connectAndSubscribe(){
         }
 
         if(connected){
+            Logger::instance().info("MQTTWorker",
+                                    "MQTT connect succeeded on attempt " +
+                                        std::to_string(attemptNumber) + ".",
+                                    false);
             break;
         }
 
@@ -201,6 +231,12 @@ bool MQTTWorker::connectAndSubscribe(){
             connectionAttemptCount++;
         }
 
+        Logger::instance().warn("MQTTWorker",
+                                "MQTT connect attempt " + std::to_string(attemptNumber) +
+                                    " failed. retry_count=" +
+                                    std::to_string(connectionAttemptCount) + "/" +
+                                    std::to_string(MAX_RECONNECT_ATTEMPTS),
+                                false);
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
@@ -213,14 +249,24 @@ bool MQTTWorker::connectAndSubscribe(){
     if(!subscribed){
         std::lock_guard stateGuard(callbackStateMutex);
         subFailed = true;
+        setFailure("Connected to MQTT broker but subscribe failed for command topic.");
+        Logger::instance().error("MQTTWorker",
+                                 "Connected to MQTT broker but subscribe failed for command topic '" +
+                                     TOPIC_SYSTEM_COMMAND + "'.",
+                                 true);
+        return false;
     }
 
-    return subscribed;
+    Logger::instance().info("MQTTWorker",
+                            "Connected to MQTT broker and subscribed to command topic.",
+                            true);
+    return true;
 }
 
 
 bool MQTTWorker::publishWithRetries(const std::string& topic, const std::string& payload){
     for(int attempts = 0; attempts <= MAX_PUBLISH_ATTEMPTS; attempts++){
+        const int attemptNumber = attempts + 1;
         bool success = false;
         {
             std::lock_guard clientGuard(clientAccessMutex);
@@ -228,12 +274,25 @@ bool MQTTWorker::publishWithRetries(const std::string& topic, const std::string&
         }
 
         if(success){
+            if(attemptNumber > 1){
+                Logger::instance().info("MQTTWorker",
+                                        "Publish succeeded for topic '" + topic + "' on retry " +
+                                            std::to_string(attemptNumber) + ".",
+                                        false);
+            }
             return true;
         }
+
+        Logger::instance().warn("MQTTWorker",
+                                "Publish attempt " + std::to_string(attemptNumber) + "/" +
+                                    std::to_string(MAX_PUBLISH_ATTEMPTS + 1) +
+                                    " failed for topic '" + topic + "'.",
+                                false);
     }
 
     std::lock_guard stateGuard(callbackStateMutex);
     pubFailed = true;
+    setFailure("Publish failed for topic '" + topic + "' after max attempts.");
     return false;
 }
 
@@ -285,11 +344,43 @@ void MQTTWorker::publishCalibrationStatus(){
     }
 
     const std::string payload = std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED));
-    publishWithRetries(TOPIC_SYSTEM_CALIBRATION_STATUS, payload);
+    const bool published = publishWithRetries(TOPIC_SYSTEM_CALIBRATION_STATUS, payload);
+    if(published){
+        Logger::instance().info("MQTTWorker",
+                                "Published calibration completion status to MQTT.",
+                                true);
+    } else {
+        Logger::instance().error("MQTTWorker",
+                                 "Failed to publish calibration completion status to MQTT.",
+                                 true);
+    }
 
     calibrationEpochActive = false;
     calibrationMessagesReceived = 0;
     calibrationMessagesRequired = 0;
+}
+
+void MQTTWorker::setFailure(const std::string& reason){
+    std::lock_guard guard(failureStateMutex);
+    workerFailed = true;
+    failureReason = reason;
+    Logger::instance().error("MQTTWorker", reason, false);
+}
+
+void MQTTWorker::clearFailure(){
+    std::lock_guard guard(failureStateMutex);
+    workerFailed = false;
+    failureReason.clear();
+}
+
+bool MQTTWorker::hasFailure(){
+    std::lock_guard guard(failureStateMutex);
+    return workerFailed;
+}
+
+std::string MQTTWorker::getFailureReason(){
+    std::lock_guard guard(failureStateMutex);
+    return failureReason;
 }
 
 

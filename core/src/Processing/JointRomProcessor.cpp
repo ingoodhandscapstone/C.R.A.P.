@@ -84,6 +84,17 @@ bool JointRomProcessor::getJointAngle(int& digVolt, float& angle){
 
 }
 
+bool JointRomProcessor::getCalibrationAngle(float& angle) const{
+    if(config == nullptr || config->loadingPieceCoef.size() < 3){
+        return false;
+    }
+
+    angle = config->loadingPieceCoef.at(0) * std::pow(movingAverageVoltage, 2) +
+            config->loadingPieceCoef.at(1) * movingAverageVoltage +
+            config->loadingPieceCoef.at(2);
+    return true;
+}
+
 bool JointRomProcessor::reset(){
     calibrationSampleCount = 0;
     movingAverageVoltage = 0.0f;

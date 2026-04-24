@@ -100,7 +100,11 @@ class Bluetooth : public Communication {
         void addMessageToFlexStorage(SimpleBLE::ByteArray payload);
         void addMessageToForceStorage(SimpleBLE::ByteArray payload);
 
-        void reconnect(SimpleBLE::Safe::Peripheral& peripheral);
+        bool scanForPeripheral(const SimpleBLE::BluetoothAddress& targetAddress,
+                               const char * peripheralName,
+                               SimpleBLE::Safe::Peripheral& peripheral);
+        bool connectPeripheral(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName);
+        void reconnect(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName);
         bool readMessageStorage(std::mutex& mutex, std::queue<std::vector<uint8_t>>& messageStorage, std::vector<uint8_t>& message);
         
 

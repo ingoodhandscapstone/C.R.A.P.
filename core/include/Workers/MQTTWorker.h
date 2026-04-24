@@ -68,9 +68,13 @@ class MQTTWorker{
 
     std::mutex callbackStateMutex;
     std::mutex clientAccessMutex;
+    mutable std::mutex failureStateMutex;
 
     std::unique_ptr<MQTTClient> ownedMqttClient;
     MQTTClient * mqttClient;
+
+    bool workerFailed;
+    std::string failureReason;
 
     bool calibrationEpochActive;
     uint32_t currentCalibrationEpoch;
@@ -81,6 +85,8 @@ class MQTTWorker{
     void onMessageArrived(const std::string& topic, const std::string& payload);
     bool connectAndSubscribe();
     bool publishWithRetries(const std::string& topic, const std::string& payload);
+    void setFailure(const std::string& reason);
+    void clearFailure();
 
     void publishData(std::mutex * queueMut, std::queue<DataOutputElement> * elemQueue);
     void publishCalibrationStatus();
@@ -99,6 +105,8 @@ class MQTTWorker{
                         std::mutex * calibrationStatusMutex);
 
         void run(std::stop_token stopToken);
+        bool hasFailure();
+        std::string getFailureReason();
 };
 
 

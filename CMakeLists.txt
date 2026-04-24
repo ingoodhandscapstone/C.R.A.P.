@@ -82,6 +82,43 @@ target_link_libraries(app PUBLIC blood_oxygen_processor
                           PUBLIC PahoMqttCpp::paho-mqttpp3
                           PUBLIC Threads::Threads)
 
+add_executable(bluetooth_connection_test app/bluetooth_connection_test.cpp)
+target_include_directories(bluetooth_connection_test
+    PUBLIC core/include/
+    PUBLIC core/include/Messaging
+)
+target_link_libraries(bluetooth_connection_test
+    PUBLIC bluetooth
+    PUBLIC simpleble::simpleble
+    PUBLIC Threads::Threads
+)
+
+add_executable(mqtt_connection_test app/mqtt_connection_test.cpp)
+target_include_directories(mqtt_connection_test
+    PUBLIC core/include/
+    PUBLIC core/include/Messaging
+    PUBLIC core/include/Processing
+)
+target_link_libraries(mqtt_connection_test
+    PUBLIC blood_oxygen_processor
+    PUBLIC accel_gravity_measure_model
+    PUBLIC bluetooth
+    PUBLIC paho_mqtt_client
+    PUBLIC finger_abduction_processor
+    PUBLIC force_processing
+    PUBLIC joint_rom_processor
+    PUBLIC wrist_orientation_processor
+    PUBLIC com_worker
+    PUBLIC sensor_processing_lane_worker
+    PUBLIC mqtt_worker
+    PUBLIC simpleble::simpleble
+    PUBLIC InEKF::Core
+    PUBLIC InEKF::SE2Models
+    PUBLIC InEKF::Inertial
+    PUBLIC PahoMqttCpp::paho-mqttpp3
+    PUBLIC Threads::Threads
+)
+
 if(BUILD_TESTING)
 add_subdirectory(tests)
 endif()

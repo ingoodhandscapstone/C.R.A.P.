@@ -66,6 +66,7 @@ class JointRomProcessor {
         bool calibration(int& digVoltage);
 
         bool isCalibrated() {return calibrationSampleCount > (numberOfSamples - 1);}
+        bool getCalibrationAngle(float& angle) const;
 
         bool reset();
 

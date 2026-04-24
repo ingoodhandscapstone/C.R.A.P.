@@ -166,6 +166,8 @@ void WristOrientationProcessor::update() {
 
 Eigen::Matrix3d WristOrientationProcessor::getHandOrientationMatrix() { return currentState.R()(); }
 
+Eigen::Matrix3d WristOrientationProcessor::getInitialOrientationMatrix() const { return initialOrientation; }
+
 double WristOrientationProcessor::wrapTo360(double angleDegrees) const {
     if (angleDegrees < 0.0) {
         angleDegrees += 360.0;

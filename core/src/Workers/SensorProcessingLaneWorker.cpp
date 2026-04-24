@@ -1,7 +1,10 @@
 #include "SensorProcessingLaneWorker.h"
 
+#include "Logger.h"
+
 #include <algorithm>
 #include <cstring>
+#include <sstream>
 
 std::mutex SensorProcessingLaneWorker::calibrationEpochMutex;
 uint32_t SensorProcessingLaneWorker::calibrationEpochCounter = 0;
@@ -9,6 +12,170 @@ uint32_t SensorProcessingLaneWorker::calibrationEpochJoinCount = 0;
 uint32_t SensorProcessingLaneWorker::calibrationEpochRequiredCount = 0;
 bool SensorProcessingLaneWorker::calibrationEpochOpen = false;
 const std::chrono::milliseconds SensorProcessingLaneWorker::CALIBRATION_TIMEOUT_MS(30000);
+
+namespace {
+const char * processingGroupToString(SensorProcessingLaneWorker::ProcessingGroup group){
+    if(group == SensorProcessingLaneWorker::ProcessingGroup::FLEX_SPO2){
+        return "FLEX_SPO2";
+    }
+    return "IMU_FORCE";
+}
+
+const char * sensorTypeToString(SensorType type){
+    switch(type){
+        case SensorType::IMU_GYRO:
+            return "IMU_GYRO";
+        case SensorType::IMU_ACCEL:
+            return "IMU_ACCEL";
+        case SensorType::FLEX:
+            return "FLEX";
+        case SensorType::SPO2:
+            return "SPO2";
+        case SensorType::FORCE:
+            return "FORCE";
+    }
+    return "UNKNOWN";
+}
+
+const char * sensorIdToString(SensorID id){
+    switch(id){
+        case SensorID::WRIST_SPO2:
+            return "WRIST_SPO2";
+        case SensorID::HAND_IMU:
+            return "HAND_IMU";
+        case SensorID::POINTER_IMU:
+            return "POINTER_IMU";
+        case SensorID::MIDDLE_IMU:
+            return "MIDDLE_IMU";
+        case SensorID::THUMB_IMU:
+            return "THUMB_IMU";
+        case SensorID::RING_IMU:
+            return "RING_IMU";
+        case SensorID::PINKY_IMU:
+            return "PINKY_IMU";
+        case SensorID::POINTER_MCP_FLEX:
+            return "POINTER_MCP_FLEX";
+        case SensorID::POINTER_PIP_FLEX:
+            return "POINTER_PIP_FLEX";
+        case SensorID::POINTER_DIP_FLEX:
+            return "POINTER_DIP_FLEX";
+        case SensorID::MIDDLE_MCP_FLEX:
+            return "MIDDLE_MCP_FLEX";
+        case SensorID::MIDDLE_PIP_FLEX:
+            return "MIDDLE_PIP_FLEX";
+        case SensorID::MIDDLE_DIP_FLEX:
+            return "MIDDLE_DIP_FLEX";
+        case SensorID::RING_MCP_FLEX:
+            return "RING_MCP_FLEX";
+        case SensorID::RING_PIP_FLEX:
+            return "RING_PIP_FLEX";
+        case SensorID::RING_DIP_FLEX:
+            return "RING_DIP_FLEX";
+        case SensorID::PINKY_MCP_FLEX:
+            return "PINKY_MCP_FLEX";
+        case SensorID::PINKY_PIP_FLEX:
+            return "PINKY_PIP_FLEX";
+        case SensorID::PINKY_DIP_FLEX:
+            return "PINKY_DIP_FLEX";
+        case SensorID::THUMB_MCP_FLEX:
+            return "THUMB_MCP_FLEX";
+        case SensorID::THUMB_PIP_FLEX:
+            return "THUMB_PIP_FLEX";
+        case SensorID::POINTER_FORCE:
+            return "POINTER_FORCE";
+        case SensorID::MIDDLE_FORCE:
+            return "MIDDLE_FORCE";
+        case SensorID::THUMB_FORCE:
+            return "THUMB_FORCE";
+        case SensorID::RING_FORCE:
+            return "RING_FORCE";
+        case SensorID::PINKY_FORCE:
+            return "PINKY_FORCE";
+        case SensorID::HAND_IMU_Y:
+            return "HAND_IMU_Y";
+    }
+
+    return "UNKNOWN";
+}
+
+const char * commandToString(SessionCommand command){
+    switch(command){
+        case SessionCommand::NONE:
+            return "NONE";
+        case SessionCommand::SESSION_CONFIG_WRIST:
+            return "SESSION_CONFIG_WRIST";
+        case SessionCommand::SESSION_CONFIG_POINTER:
+            return "SESSION_CONFIG_POINTER";
+        case SessionCommand::SESSION_CONFIG_SPO2:
+            return "SESSION_CONFIG_SPO2";
+        case SessionCommand::SESSION_START:
+            return "SESSION_START";
+        case SessionCommand::SESSION_STOP:
+            return "SESSION_STOP";
+        case SessionCommand::CALIBRATE_SESSION:
+            return "CALIBRATE_SESSION";
+        case SessionCommand::CALIBRATION_IN_PROGRESS:
+            return "CALIBRATION_IN_PROGRESS";
+        case SessionCommand::CALIBRATION_COMPLETED:
+            return "CALIBRATION_COMPLETED";
+        case SessionCommand::SESSION_CONFIG_MIDDLE:
+            return "SESSION_CONFIG_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_RING:
+            return "SESSION_CONFIG_RING";
+        case SessionCommand::SESSION_CONFIG_PINKY:
+            return "SESSION_CONFIG_PINKY";
+        case SessionCommand::SESSION_CONFIG_THUMB:
+            return "SESSION_CONFIG_THUMB";
+        case SessionCommand::SESSION_CONFIG_POINTER_MIDDLE:
+            return "SESSION_CONFIG_POINTER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_POINTER_WRIST:
+            return "SESSION_CONFIG_POINTER_WRIST";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_POINTER:
+            return "SESSION_CONFIG_GRIPPER_POINTER";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_MIDDLE:
+            return "SESSION_CONFIG_GRIPPER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_RING:
+            return "SESSION_CONFIG_GRIPPER_RING";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_PINKY:
+            return "SESSION_CONFIG_GRIPPER_PINKY";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_THUMB:
+            return "SESSION_CONFIG_GRIPPER_THUMB";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_POINTER_MIDDLE:
+            return "SESSION_CONFIG_GRIPPER_POINTER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_ALL:
+            return "SESSION_CONFIG_GRIPPER_ALL";
+    }
+
+    return "UNKNOWN";
+}
+
+std::string formatRawValues(const std::vector<uint32_t>& values){
+    std::ostringstream out;
+    out << "[";
+    for(size_t i = 0; i < values.size(); i++){
+        out << values[i];
+        if(i + 1 < values.size()){
+            out << ",";
+        }
+    }
+    out << "]";
+    return out.str();
+}
+
+std::string formatMatrix(const Eigen::Matrix3d& matrix){
+    std::ostringstream out;
+    out << "[[" << matrix(0, 0) << "," << matrix(0, 1) << "," << matrix(0, 2) << "],"
+        << "[" << matrix(1, 0) << "," << matrix(1, 1) << "," << matrix(1, 2) << "],"
+        << "[" << matrix(2, 0) << "," << matrix(2, 1) << "," << matrix(2, 2) << "]]";
+    return out.str();
+}
+
+float u32BitsToFloat(uint32_t value){
+    float out = 0.0f;
+    std::memcpy(&out, &value, sizeof(float));
+    return out;
+}
+}
 
 void SensorProcessingLaneWorker::initialize(ProcessingGroup processingGroup,
                                             BloodOxygenProcessor * wristSPO2Processor,
@@ -47,6 +214,7 @@ void SensorProcessingLaneWorker::initialize(ProcessingGroup processingGroup,
                                             std::mutex * commandMutex,
                                             std::mutex * sensorDataMutex,
                                             std::mutex * calibrationStatusMutex){
+    clearFailure();
     this->processingGroup = processingGroup;
     this->wristSPO2Processor = wristSPO2Processor;
     this->handIMUProcessor = handIMUProcessor;
@@ -92,6 +260,11 @@ void SensorProcessingLaneWorker::initialize(ProcessingGroup processingGroup,
     resetSessionSelections();
     resetImuCalibrationState();
     resetForceCalibrationState();
+
+    Logger::instance().info("SensorProcessingLaneWorker",
+                            std::string("Initialized processing group=") +
+                                processingGroupToString(this->processingGroup),
+                            false);
 
     if(imuConfigs != nullptr){
         if(handIMUProcessor != nullptr){
@@ -340,6 +513,7 @@ void SensorProcessingLaneWorker::resetProcessingData(){
 }
 
 void SensorProcessingLaneWorker::run(std::stop_token stopToken){
+    clearFailure();
     while(!stopToken.stop_requested()){
         switch(state){
             case SensorProcessingState::IDLE: {
@@ -358,6 +532,9 @@ void SensorProcessingLaneWorker::run(std::stop_token stopToken){
                     }
 
                     if(!success){
+                        setFailure(std::string("Failed to configure session command ") +
+                                   commandToString(mostRecentConfigCommand) + " for group=" +
+                                   processingGroupToString(processingGroup));
                         return;
                     }
 
@@ -379,6 +556,14 @@ void SensorProcessingLaneWorker::run(std::stop_token stopToken){
                     const uint32_t requiredCount = getRequiredCalibrationCount(mostRecentConfigCommand);
                     currentCalibrationEpoch = acquireCalibrationEpoch(requiredCount);
                     calibrationStartTime = std::chrono::steady_clock::now();
+                    Logger::instance().info("SensorProcessingLaneWorker",
+                                            std::string("Starting calibration group=") +
+                                                processingGroupToString(processingGroup) +
+                                                " command=" +
+                                                commandToString(mostRecentConfigCommand) +
+                                                " epoch=" +
+                                                std::to_string(currentCalibrationEpoch),
+                                            false);
                     state = SensorProcessingState::CALIBRATING;
                     popFrontCommand();
                 }
@@ -389,11 +574,16 @@ void SensorProcessingLaneWorker::run(std::stop_token stopToken){
                 if(calibrationStartTime != std::chrono::steady_clock::time_point::min()){
                     const auto elapsed = std::chrono::steady_clock::now() - calibrationStartTime;
                     if(elapsed >= CALIBRATION_TIMEOUT_MS){
+                        setFailure(std::string("Calibration timed out for group=") +
+                                   processingGroupToString(processingGroup) +
+                                   " command=" +
+                                   commandToString(mostRecentConfigCommand));
                         return;
                     }
                 }
 
                 if(runCalibration()){
+                    logCalibrationInitialStates();
                     CalibrationStatusMessage message;
                     message.epoch = currentCalibrationEpoch;
                     message.requiredCount = getRequiredCalibrationCount(mostRecentConfigCommand);
@@ -450,6 +640,82 @@ void SensorProcessingLaneWorker::run(std::stop_token stopToken){
             default:
                 break;
         }
+    }
+}
+
+void SensorProcessingLaneWorker::setFailure(const std::string& reason){
+    std::lock_guard guard(failureStateMutex);
+    workerFailed = true;
+    failureReason = reason;
+    Logger::instance().error("SensorProcessingLaneWorker", reason, false);
+}
+
+void SensorProcessingLaneWorker::clearFailure(){
+    std::lock_guard guard(failureStateMutex);
+    workerFailed = false;
+    failureReason.clear();
+}
+
+bool SensorProcessingLaneWorker::hasFailure(){
+    std::lock_guard guard(failureStateMutex);
+    return workerFailed;
+}
+
+std::string SensorProcessingLaneWorker::getFailureReason(){
+    std::lock_guard guard(failureStateMutex);
+    return failureReason;
+}
+
+void SensorProcessingLaneWorker::logSensorElementRead(const char * stage, const DataToProcessorElement& elem){
+    Logger::instance().debug("SensorProcessingLaneWorker",
+                             std::string("sensor_read stage=") + stage + " group=" +
+                                 processingGroupToString(processingGroup) +
+                                 " type=" + sensorTypeToString(elem.type) +
+                                 " sensor=" + sensorIdToString(elem.id) +
+                                 " timestamp=" + std::to_string(elem.timestamp) +
+                                 " raw=" + formatRawValues(elem.data),
+                             false);
+}
+
+void SensorProcessingLaneWorker::logOutputElement(const DataOutputElement& elem){
+    Logger::instance().debug("SensorProcessingLaneWorker",
+                             std::string("output_value group=") +
+                                 processingGroupToString(processingGroup) +
+                                 " sensor=" + sensorIdToString(elem.id) +
+                                 " value=" + elem.data,
+                             false);
+}
+
+void SensorProcessingLaneWorker::logCalibrationInitialStates(){
+    if(processingGroup == ProcessingGroup::FLEX_SPO2){
+        for(const SensorID id : activeFlexSensors){
+            JointRomProcessor * processor = findFlexSensorProcessor(id);
+            if(processor == nullptr){
+                continue;
+            }
+
+            float initialAngle = 0.0f;
+            if(!processor->getCalibrationAngle(initialAngle)){
+                continue;
+            }
+
+            Logger::instance().info("SensorProcessingLaneWorker",
+                                    std::string("Calibration initial flex angle sensor=") +
+                                        sensorIdToString(id) + " angle=" +
+                                        std::to_string(initialAngle),
+                                    true);
+        }
+        return;
+    }
+
+    if(processingGroup == ProcessingGroup::IMU_FORCE &&
+       isHandImuActive() &&
+       handIMUProcessor != nullptr){
+        const Eigen::Matrix3d initialOrientation = handIMUProcessor->getInitialOrientationMatrix();
+        Logger::instance().info("SensorProcessingLaneWorker",
+                                std::string("Calibration initial hand orientation matrix=") +
+                                    formatMatrix(initialOrientation),
+                                true);
     }
 }
 
@@ -897,6 +1163,7 @@ bool SensorProcessingLaneWorker::calibrateFlexSession(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("CALIBRATE", elem);
 
     if(elem.type != SensorType::FLEX || !isActiveFlexSensor(elem.id)){
         return false;
@@ -929,6 +1196,7 @@ bool SensorProcessingLaneWorker::calibrateImuSession(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("CALIBRATE", elem);
 
     if((elem.type != SensorType::IMU_ACCEL && elem.type != SensorType::IMU_GYRO) ||
        (elem.id != SensorID::HAND_IMU && !isActiveFingerImuSensor(elem.id))){
@@ -986,6 +1254,7 @@ bool SensorProcessingLaneWorker::calibrateForceSession(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("CALIBRATE", elem);
 
     if(elem.type != SensorType::FORCE || !isActiveForceSensor(elem.id)){
         return false;
@@ -1034,6 +1303,7 @@ void SensorProcessingLaneWorker::runFlexSession(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("RUN", elem);
 
     if(elem.type != SensorType::FLEX || !isActiveFlexSensor(elem.id)){
         return;
@@ -1055,6 +1325,7 @@ void SensorProcessingLaneWorker::runFlexSession(){
     DataOutputElement outputElem;
     outputElem.id = elem.id;
     outputElem.data = std::to_string(angle);
+    logOutputElement(outputElem);
 
     {
         std::lock_guard guard(*forwardMQTTMutex);
@@ -1077,6 +1348,7 @@ void SensorProcessingLaneWorker::runSpo2Session(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("RUN", elem);
 
     if(elem.type != SensorType::SPO2 || elem.id != SensorID::WRIST_SPO2){
         return;
@@ -1094,6 +1366,7 @@ void SensorProcessingLaneWorker::runSpo2Session(){
     DataOutputElement outputElem;
     outputElem.id = SensorID::WRIST_SPO2;
     outputElem.data = std::to_string(spo2);
+    logOutputElement(outputElem);
     {
         std::lock_guard guard(*forwardMQTTMutex);
         forwardMQTTQueue->push(outputElem);
@@ -1111,6 +1384,7 @@ void SensorProcessingLaneWorker::runImuSession(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("RUN", elem);
 
     if((elem.type != SensorType::IMU_ACCEL && elem.type != SensorType::IMU_GYRO) ||
        (elem.id != SensorID::HAND_IMU && !isActiveFingerImuSensor(elem.id))){
@@ -1178,6 +1452,7 @@ void SensorProcessingLaneWorker::runImuSession(){
             DataOutputElement outputElem;
             outputElem.id = fingerId;
             outputElem.data = std::to_string(angle);
+            logOutputElement(outputElem);
 
             std::lock_guard guard(*forwardMQTTMutex);
             forwardMQTTQueue->push(outputElem);
@@ -1193,10 +1468,12 @@ void SensorProcessingLaneWorker::runImuSession(){
         DataOutputElement xOutput;
         xOutput.id = SensorID::HAND_IMU;
         xOutput.data = std::to_string(xAngle);
+        logOutputElement(xOutput);
 
         DataOutputElement yOutput;
         yOutput.id = SensorID::HAND_IMU_Y;
         yOutput.data = std::to_string(yAngle);
+        logOutputElement(yOutput);
 
         std::lock_guard guard(*forwardMQTTMutex);
         forwardMQTTQueue->push(xOutput);
@@ -1215,6 +1492,7 @@ void SensorProcessingLaneWorker::runForceSession(){
         elem = sensorDataQueue->front();
         sensorDataQueue->pop();
     }
+    logSensorElementRead("RUN", elem);
 
     if(elem.type != SensorType::FORCE || !isActiveForceSensor(elem.id)){
         return;
@@ -1236,6 +1514,7 @@ void SensorProcessingLaneWorker::runForceSession(){
     DataOutputElement outputElem;
     outputElem.id = elem.id;
     outputElem.data = std::to_string(force);
+    logOutputElement(outputElem);
 
     {
         std::lock_guard guard(*forwardMQTTMutex);
@@ -1245,14 +1524,6 @@ void SensorProcessingLaneWorker::runForceSession(){
 
 void SensorProcessingLaneWorker::convertToFlexInputData(int& digVoltage, const DataToProcessorElement& elem){
     digVoltage = static_cast<int>(elem.data[0]);
-}
-
-namespace {
-float u32BitsToFloat(uint32_t value){
-    float out = 0.0f;
-    std::memcpy(&out, &value, sizeof(float));
-    return out;
-}
 }
 
 void SensorProcessingLaneWorker::convertToImuInputData(Eigen::Vector3d& accels,

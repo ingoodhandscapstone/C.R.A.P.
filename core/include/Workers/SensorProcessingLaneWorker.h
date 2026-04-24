@@ -4,6 +4,7 @@
 #include <mutex>
 #include <queue>
 #include <stop_token>
+#include <string>
 #include <unordered_map>
 #include <chrono>
 #include <vector>
@@ -131,6 +132,10 @@ class SensorProcessingLaneWorker {
     void (SensorProcessingLaneWorker::*sessionFunc)();
     void (SensorProcessingLaneWorker::*resetFunc)();
 
+    mutable std::mutex failureStateMutex;
+    bool workerFailed;
+    std::string failureReason;
+
     bool isSessionConfigCommand(SessionCommand command);
     bool isRelevantConfigCommand(SessionCommand command);
     bool usesFlexSpo2ForCommand(SessionCommand command);
@@ -190,6 +195,11 @@ class SensorProcessingLaneWorker {
     void resetForceCalibrationState();
     void resetFlexSPO2ConfigData();
     void resetImuForceConfigData();
+    void setFailure(const std::string& reason);
+    void clearFailure();
+    void logSensorElementRead(const char * stage, const DataToProcessorElement& elem);
+    void logOutputElement(const DataOutputElement& elem);
+    void logCalibrationInitialStates();
 
   public:
     SensorProcessingLaneWorker() :
@@ -253,7 +263,10 @@ class SensorProcessingLaneWorker {
         handHasUpdatedInSession(false),
         calibrationFunc(nullptr),
         sessionFunc(nullptr),
-        resetFunc(nullptr) {}
+        resetFunc(nullptr),
+        failureStateMutex(),
+        workerFailed(false),
+        failureReason() {}
 
     void initialize(ProcessingGroup processingGroup,
                     BloodOxygenProcessor * wristSPO2Processor,
@@ -294,6 +307,8 @@ class SensorProcessingLaneWorker {
                     std::mutex * calibrationStatusMutex);
 
     void run(std::stop_token stopToken);
+    bool hasFailure();
+    std::string getFailureReason();
 };
 
 

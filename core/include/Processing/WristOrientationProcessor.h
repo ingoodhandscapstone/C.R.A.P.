@@ -68,6 +68,7 @@ class WristOrientationProcessor {
     void update();
 
     Eigen::Matrix3d getHandOrientationMatrix();
+    Eigen::Matrix3d getInitialOrientationMatrix() const;
     void getXAxisAngle(float& angle);
     void getYAxisAngle(float& angle);
 };

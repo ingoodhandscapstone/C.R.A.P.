@@ -1,5 +1,5 @@
 #ifndef PROCESSOR_CONFIGS_H
-#define PROCESSOR_COFNIGS_H
+#define PROCESSOR_CONFIGS_H
 
 #include "Eigen/Core"
 #include <map>

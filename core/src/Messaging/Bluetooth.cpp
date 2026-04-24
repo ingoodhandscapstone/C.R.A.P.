@@ -1,8 +1,11 @@
 #include "Bluetooth.h"
+#include "Logger.h"
 
-const int Bluetooth::SCAN_ATTEMPTS = 5;
-const int Bluetooth::RECONNECT_ATTEMPTS = 5;
-const int Bluetooth::SCAN_TIMEOUT_MS = 5000;
+#include <string>
+
+const int Bluetooth::SCAN_ATTEMPTS = 10;
+const int Bluetooth::RECONNECT_ATTEMPTS = 10;
+const int Bluetooth::SCAN_TIMEOUT_MS = 4000;
 
 const SimpleBLE::BluetoothAddress Bluetooth::GLOVE_ADDRESS = SimpleBLE::BluetoothAddress("C2:12:34:56:78:9A");
 const SimpleBLE::BluetoothAddress Bluetooth::GRIPPER_ADDRESS = SimpleBLE::BluetoothAddress();
@@ -32,76 +35,139 @@ const SimpleBLE::BluetoothUUID Bluetooth::forceUUID = SimpleBLE::BluetoothUUID()
 
 
 bool Bluetooth::initialize(){
+    Logger::instance().info("Bluetooth", "Initializing Bluetooth communication.");
 
     auto adapters = SimpleBLE::Safe::Adapter::get_adapters();
 
     if(!adapters || adapters->empty()){
+        Logger::instance().error("Bluetooth", "No Bluetooth adapters found.", true);
         return false;
     }
 
     adapter = adapters.value()[0];
 
-    bool success = false;
-
-    for(int attempts = 0; attempts < SCAN_ATTEMPTS; attempts++){
-
-        adapter.scan_for(SCAN_TIMEOUT_MS);
-
-        auto peripherals = adapter.scan_get_results();
-
-        if(!peripherals || peripherals->empty()){
-            continue;
-        }
-
-        bool foundGripper = false;
-        bool foundGlove = false;
-
-        for(int i = 0; i < peripherals->size(); i++){
-            auto address = peripherals->at(i).address();
-            if(!address.has_value()){
-                continue;
-            }
-            if(address.value() == GLOVE_ADDRESS){
-                glove = peripherals->at(i);
-                foundGlove = true;
-
-            } else if (address.value() == GRIPPER_ADDRESS){
-                gripper = peripherals->at(i);
-                foundGripper = true;
-            }
-        }
-
-        if(foundGripper && foundGlove){
-            success = true;
-            break;
-        }
-
-            
-    }
-
+    bool success = scanForPeripheral(GLOVE_ADDRESS, "glove", glove);
+    // success = success && scanForPeripheral(GRIPPER_ADDRESS, "gripper", gripper);
     if(!success){
         return false;
     }
 
-
-    success = success && glove.connect();
-    success = success && gripper.connect();
+    success = connectPeripheral(glove, "glove");
+    // success = success && connectPeripheral(gripper, "gripper");
+    if(!success){
+        return false;
+    }
 
     success = success && glove.notify(gloveSensorUUID, gyroUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToGyroStorage(payload);});
     success = success && glove.notify(gloveSensorUUID, accelUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToAccelStorage(payload);});
     success = success && glove.notify(gloveSensorUUID, spo2UUID, [this](SimpleBLE::ByteArray payload){this->addMessageToSpo2Storage(payload);});
     success = success && glove.notify(gloveSensorUUID, flexUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToFlexStorage(payload);});
-    success = success && gripper.notify(gripperSensorUUID, forceUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToForceStorage(payload);});
+    //success = success && gripper.notify(gripperSensorUUID, forceUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToForceStorage(payload);});
 
-    
-    success = success && glove.set_callback_on_disconnected([this](){this->reconnect(glove);});
-    success = success && gripper.set_callback_on_disconnected([this](){this->reconnect(gripper);});
+    success = success && glove.set_callback_on_disconnected([this](){this->reconnect(glove, "glove");});
+   // success = success && gripper.set_callback_on_disconnected([this](){this->reconnect(gripper, "gripper");});
+
+    if(!success){
+        Logger::instance().error("Bluetooth", "Bluetooth setup failed after initial connection.", false);
+        return false;
+    }
 
     return success;
 
 
 }
 
+
+bool Bluetooth::scanForPeripheral(const SimpleBLE::BluetoothAddress& targetAddress,
+                                  const char * peripheralName,
+                                  SimpleBLE::Safe::Peripheral& peripheral) {
+    for(int attempt = 0; attempt < SCAN_ATTEMPTS; attempt++){
+        const int scanAttemptNumber = attempt + 1;
+
+        adapter.scan_for(SCAN_TIMEOUT_MS);
+        auto peripherals = adapter.scan_get_results();
+
+        std::vector<std::string> foundAddresses;
+
+        if(peripherals.has_value() && !peripherals->empty()){
+            for(int i = 0; i < peripherals->size(); i++){
+                auto address = peripherals->at(i).address();
+                if(!address.has_value()){
+                    continue;
+                }
+
+                foundAddresses.push_back(address.value());
+
+                if(address.value() == targetAddress){
+                    peripheral = peripherals->at(i);
+                }
+            }
+        }
+
+        if(foundAddresses.empty()){
+            Logger::instance().info(
+                "Bluetooth",
+                "No addresses found for scan attempt " + std::to_string(scanAttemptNumber) + ".",
+                true);
+            continue;
+        }
+
+        std::string foundAddressesMessage =
+            "Scan attempt " + std::to_string(scanAttemptNumber) + " found addresses: ";
+        for(std::size_t i = 0; i < foundAddresses.size(); i++){
+            foundAddressesMessage += foundAddresses.at(i);
+            if(i + 1 < foundAddresses.size()){
+                foundAddressesMessage += ", ";
+            }
+        }
+        Logger::instance().info("Bluetooth", foundAddressesMessage, false);
+
+        auto foundAddress = peripheral.address();
+        if(foundAddress.has_value() && foundAddress.value() == targetAddress){
+            Logger::instance().info(
+                "Bluetooth",
+                std::string("Found ") + peripheralName + " on scan attempt " +
+                    std::to_string(scanAttemptNumber) + ".",
+                true);
+            return true;
+        }
+    }
+
+    Logger::instance().error(
+        "Bluetooth",
+        std::string("Failed to find ") + peripheralName + " after " +
+            std::to_string(SCAN_ATTEMPTS) + " scan attempts.",
+        true);
+    return false;
+}
+
+bool Bluetooth::connectPeripheral(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName) {
+    for(int attempt = 0; attempt < RECONNECT_ATTEMPTS; attempt++){
+        const int connectAttemptNumber = attempt + 1;
+
+        if(peripheral.connect()){
+            Logger::instance().info(
+                "Bluetooth",
+                std::string("Connected to ") + peripheralName + " on attempt " +
+                    std::to_string(connectAttemptNumber) + ".",
+                true);
+            return true;
+        }
+
+        Logger::instance().warn(
+            "Bluetooth",
+            std::string("Connection attempt ") + std::to_string(connectAttemptNumber) +
+                " failed for " + peripheralName + ".",
+            true);
+    }
+
+    Logger::instance().error(
+        "Bluetooth",
+        std::string("Failed to connect to ") + peripheralName + " after " +
+            std::to_string(RECONNECT_ATTEMPTS) + " attempts.",
+        true);
+    return false;
+}
 
 void Bluetooth::addMessageToGyroStorage(SimpleBLE::ByteArray payload) {
     std::lock_guard<std::mutex> gyroGuard(gyroDataMutex);
@@ -129,15 +195,24 @@ void Bluetooth::addMessageToForceStorage(SimpleBLE::ByteArray payload) {
 }
 
 
-void Bluetooth::reconnect(SimpleBLE::Safe::Peripheral& peripheral){
+void Bluetooth::reconnect(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName){
+    Logger::instance().warn("Bluetooth",
+                            std::string("Disconnected from ") + peripheralName +
+                                ". Attempting reconnect.",
+                            true);
 
     for(int i = 0; i < RECONNECT_ATTEMPTS; i++){
         if(peripheral.connect()) {
+            Logger::instance().info("Bluetooth",
+                                    std::string("Reconnected to ") + peripheralName + ".",
+                                    true);
             return;
         }
     }
 
-    // Maybe do additional scanning or alert the UI if this fails??
+    Logger::instance().error("Bluetooth",
+                             std::string("Reconnect failed for ") + peripheralName + ".",
+                             true);
 
 }
 
@@ -203,6 +278,10 @@ bool Bluetooth::write(const Endpoints& endpoint, std::vector<uint8_t>& message) 
 }
 
 bool Bluetooth::isConnected(){
-    return gripper.is_connected().has_value() && gripper.is_connected().value() 
-            && glove.is_connected().has_value() && glove.is_connected().value();
+    auto gloveConnected = glove.is_connected();
+    // auto gripperConnected = gripper.is_connected();
+
+    return gloveConnected.has_value() && gloveConnected.value();
+    // return gloveConnected.has_value() && gloveConnected.value()
+    //         && gripperConnected.has_value() && gripperConnected.value();
 }

@@ -33,7 +33,7 @@ class PahoMQTTClient : public MQTTClient {
     MessageHandler messageHandler;
 
     void onMessageArrived(const std::string& topic, const std::string& payload);
-    void onConnectionLost();
+    void onConnectionLost(const std::string& cause);
 
     public:
         PahoMQTTClient(const std::string& serverURI, const std::string& clientID);
