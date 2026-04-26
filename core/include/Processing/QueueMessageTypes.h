@@ -41,7 +41,8 @@ enum class SensorID{
     THUMB_FORCE,
     RING_FORCE,
     PINKY_FORCE,
-    HAND_IMU_Y
+    HAND_IMU_Y,
+    HAND_IMU_X
 };
 
 struct DataOutputElement {

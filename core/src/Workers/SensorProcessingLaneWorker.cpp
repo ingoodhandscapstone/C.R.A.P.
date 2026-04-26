@@ -1466,7 +1466,7 @@ void SensorProcessingLaneWorker::runImuSession(){
         handIMUProcessor->getYAxisAngle(yAngle);
 
         DataOutputElement xOutput;
-        xOutput.id = SensorID::HAND_IMU;
+        xOutput.id = SensorID::HAND_IMU_X;
         xOutput.data = std::to_string(xAngle);
         logOutputElement(xOutput);
 

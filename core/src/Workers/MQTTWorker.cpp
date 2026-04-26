@@ -8,7 +8,7 @@ const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 10;
 const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 10;
 const int MQTTWorker::QOS = 1;
 
-const std::string MQTTWorker::SERVER_URI = "tcp://10.176.139.26:1883";
+const std::string MQTTWorker::SERVER_URI = "mqtt://localhost:1883";
 const std::string MQTTWorker::CLIENT_ID = "esp32_glove_main";
 
 const std::string MQTTWorker::TOPIC_JOINT_POINTER_MCP = "joint/POINTER_MCP";
@@ -57,8 +57,8 @@ MQTTWorker::MQTTWorker() :
     callbackStateMutex(),
     clientAccessMutex(),
     failureStateMutex(),
-    ownedMqttClient(std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID)),
-    mqttClient(ownedMqttClient.get()),
+    ownedMqttClient(nullptr),
+    mqttClient(nullptr),
     workerFailed(false),
     failureReason(),
     calibrationEpochActive(false),
@@ -83,7 +83,7 @@ MQTTWorker::MQTTWorker(MQTTClient * mqttClient) :
     clientAccessMutex(),
     failureStateMutex(),
     ownedMqttClient(nullptr),
-    mqttClient(mqttClient),
+    mqttClient(nullptr),
     workerFailed(false),
     failureReason(),
     calibrationEpochActive(false),
@@ -91,10 +91,6 @@ MQTTWorker::MQTTWorker(MQTTClient * mqttClient) :
     calibrationMessagesReceived(0),
     calibrationMessagesRequired(0) {
 
-    if(this->mqttClient == nullptr){
-        ownedMqttClient = std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID);
-        this->mqttClient = ownedMqttClient.get();
-    }
 }
 
 
@@ -107,6 +103,10 @@ bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue
                             std::mutex * imuForceForwardMQTTMutex,
                             std::mutex * calibrationStatusMutex) {
     clearFailure();
+
+    ownedMqttClient = std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID);
+    this->mqttClient = ownedMqttClient.get();
+
     this->mqttForwardCommandQueue = mqttForwardCommandQueue;
     this->flexSPO2ForwardMQTTQueue = flexSPO2ForwardMQTTQueue;
     this->imuForceForwardMQTTQueue = imuForceForwardMQTTQueue;
@@ -389,8 +389,10 @@ std::string MQTTWorker::getTopic(SensorID id){
         case SensorID::WRIST_SPO2:
             return TOPIC_SPO2_WRIST;
 
-        case SensorID::HAND_IMU:
+        case SensorID::HAND_IMU_X:
             return TOPIC_ORIENTATION_WRIST_X;
+        case SensorID::HAND_IMU_Y:
+            return TOPIC_ORIENTATION_WRIST_Y;
         case SensorID::POINTER_IMU:
             return TOPIC_ABDUCTION_POINTER;
         case SensorID::MIDDLE_IMU:

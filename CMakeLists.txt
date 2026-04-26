@@ -98,23 +98,11 @@ target_include_directories(mqtt_connection_test
     PUBLIC core/include/
     PUBLIC core/include/Messaging
     PUBLIC core/include/Processing
+    PUBLIC core/include/Workers
 )
 target_link_libraries(mqtt_connection_test
-    PUBLIC blood_oxygen_processor
-    PUBLIC accel_gravity_measure_model
-    PUBLIC bluetooth
-    PUBLIC paho_mqtt_client
-    PUBLIC finger_abduction_processor
-    PUBLIC force_processing
-    PUBLIC joint_rom_processor
-    PUBLIC wrist_orientation_processor
-    PUBLIC com_worker
-    PUBLIC sensor_processing_lane_worker
     PUBLIC mqtt_worker
-    PUBLIC simpleble::simpleble
-    PUBLIC InEKF::Core
-    PUBLIC InEKF::SE2Models
-    PUBLIC InEKF::Inertial
+    PUBLIC paho_mqtt_client
     PUBLIC PahoMqttCpp::paho-mqttpp3
     PUBLIC Threads::Threads
 )
