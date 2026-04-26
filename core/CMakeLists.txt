@@ -12,26 +12,15 @@ add_library(mqtt_worker OBJECT src/Workers/MQTTWorker.cpp)
 
 
 
-target_include_directories(blood_oxygen_processor PUBLIC include/Processing
-                                                  PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
-target_include_directories(accel_gravity_measure_model PUBLIC include/Processing
-                                                     PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
-target_include_directories(bluetooth PUBLIC include/Messaging
-                                     PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-src/simpleble/include
-                                     PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-src/dependencies/external
-                                     PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/simpleble-build/export)
-target_include_directories(paho_mqtt_client PUBLIC include/Messaging
-                                        PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/pahomqtt-src/include
-                                        PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/pahomqtt-src/externals/paho.mqtt.c/src)
-target_include_directories(finger_abduction_processor PUBLIC include/Processing
-                                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
-target_include_directories(force_processing PUBLIC include/Processing
-                                              PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
-target_include_directories(joint_rom_processor PUBLIC include/Processing
-                                               PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
+target_include_directories(blood_oxygen_processor PUBLIC include/Processing)
+target_include_directories(accel_gravity_measure_model PUBLIC include/Processing)
+target_include_directories(bluetooth PUBLIC include/Messaging)
+target_include_directories(paho_mqtt_client PUBLIC include/Messaging)
+target_include_directories(finger_abduction_processor PUBLIC include/Processing)
+target_include_directories(force_processing PUBLIC include/Processing)
+target_include_directories(joint_rom_processor PUBLIC include/Processing)
 target_include_directories(wrist_orientation_processor PUBLIC include/Processing
-                                                       PUBLIC include/Workers
-                                                       PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/inekf-src/include)
+                                                       PUBLIC include/Workers)
 target_include_directories(com_worker PUBLIC include/Messaging PUBLIC include/Workers PUBLIC include/Processing)
 
 target_include_directories(sensor_processing_lane_worker PUBLIC include/Processing
@@ -39,9 +28,7 @@ target_include_directories(sensor_processing_lane_worker PUBLIC include/Processi
                                                         PUBLIC include/Messaging)
 target_include_directories(mqtt_worker PUBLIC include/Processing
                                       PUBLIC include/Workers
-                                      PUBLIC include/Messaging
-                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/pahomqtt-src/include
-                                      PUBLIC /home/jason-gomez/InGoodHandsCapstoneCode/CrapCode/build/_deps/pahomqtt-src/externals/paho.mqtt.c/src)
+                                      PUBLIC include/Messaging)
 
 
 target_link_libraries(bluetooth PUBLIC simpleble::simpleble)

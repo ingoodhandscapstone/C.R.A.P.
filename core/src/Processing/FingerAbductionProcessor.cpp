@@ -3,7 +3,7 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-const int FingerAbductionProcessor::CALIBRATION_SAMPLE_COUNT = 100;
+const int FingerAbductionProcessor::CALIBRATION_SAMPLE_COUNT = 10;
 const Eigen::Vector3d FingerAbductionProcessor::GRAVITY(0.0, 0.0, -9.81);
 const float FingerAbductionProcessor::VELOCITY_VARIANCE = 0.0f;
 const float FingerAbductionProcessor::POSITION_VARIANCE = 0.0f;

@@ -2,9 +2,8 @@
 #include <chrono>
 #include <queue>
 #include <mutex>
-#include <atomic>
 #include <condition_variable>
-#include <iostream>
+#include <csignal>
 #include <string>
 
 #include "SensorProcessingLaneWorker.h"
@@ -26,7 +25,7 @@
 
 namespace {
 constexpr float FLEX_NOISE_FLOOR = 0.0f;
-constexpr float FLEX_ADC_LSB_VOLTS = 0.001f; // 1 mV/LSB
+constexpr float FLEX_ADC_LSB_VOLTS = 0.002f; // 1 mV/LSB
 constexpr float FLEX_DEADBAND = 0.0f; // drift
 constexpr float FLEX_CALIBRATION_VOLTAGE = 0.0f;
 
@@ -464,9 +463,13 @@ bool initialize(){
 }
 
 bool done = false;
+volatile std::sig_atomic_t shutdownRequested = 0;
 std::mutex threadFailedMutex;
 std::condition_variable threadFailedCV;
 
+void handleShutdownSignal(int){
+    shutdownRequested = 1;
+}
 
 void comWorkerThreadFunc(std::stop_token stopToken){
     comWorker.run(stopToken); // Only return if failed or stop requested
@@ -540,6 +543,8 @@ void imuForceWorkerThreadFunc(std::stop_token stopToken){
 
 int main() {
     Logger::instance().initialize("logs");
+    std::signal(SIGINT, handleShutdownSignal);
+    std::signal(SIGTERM, handleShutdownSignal);
 
     std::unique_lock<std::mutex> tfLock(threadFailedMutex);
 
@@ -552,22 +557,7 @@ int main() {
     std::jthread flexSpo2Thread(flexSpo2WorkerThreadFunc);
     std::jthread imuForceThread(imuForceWorkerThreadFunc);
 
-    std::cout << "Press q then Enter to quit.\n";
-    while(!threadFailedCV.wait_for(tfLock, std::chrono::milliseconds(100), [](){return done;})){
-        if(std::cin.rdbuf()->in_avail() <= 0){
-            continue;
-        }
-
-        std::string input;
-        if(!std::getline(std::cin, input)){
-            continue;
-        }
-
-        if(input == "q" || input == "Q"){
-            done = true;
-            threadFailedCV.notify_one();
-        }
-    }
+    while(!threadFailedCV.wait_for(tfLock, std::chrono::milliseconds(100), [](){return done || shutdownRequested;})) {}
 
     comThread.request_stop();
     mqttThread.request_stop();

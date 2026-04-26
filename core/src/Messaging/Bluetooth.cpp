@@ -58,13 +58,10 @@ bool Bluetooth::initialize(){
         return false;
     }
 
-    success = success && glove.notify(gloveSensorUUID, gyroUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToGyroStorage(payload);});
-    success = success && glove.notify(gloveSensorUUID, accelUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToAccelStorage(payload);});
-    success = success && glove.notify(gloveSensorUUID, spo2UUID, [this](SimpleBLE::ByteArray payload){this->addMessageToSpo2Storage(payload);});
-    success = success && glove.notify(gloveSensorUUID, flexUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToFlexStorage(payload);});
+    success = success && setupGloveNotifications();
     //success = success && gripper.notify(gripperSensorUUID, forceUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToForceStorage(payload);});
 
-    success = success && glove.set_callback_on_disconnected([this](){this->reconnect(glove, "glove");});
+    success = success && setupGloveDisconnectCallback();
    // success = success && gripper.set_callback_on_disconnected([this](){this->reconnect(gripper, "gripper");});
 
     if(!success){
@@ -145,6 +142,12 @@ bool Bluetooth::connectPeripheral(SimpleBLE::Safe::Peripheral& peripheral, const
     for(int attempt = 0; attempt < RECONNECT_ATTEMPTS; attempt++){
         const int connectAttemptNumber = attempt + 1;
 
+        Logger::instance().info(
+            "Bluetooth",
+            std::string("Bluetooth connect attempt ") + std::to_string(connectAttemptNumber) +
+                "/" + std::to_string(RECONNECT_ATTEMPTS) + " for " + peripheralName + ".",
+            true);
+
         if(peripheral.connect()){
             Logger::instance().info(
                 "Bluetooth",
@@ -167,6 +170,23 @@ bool Bluetooth::connectPeripheral(SimpleBLE::Safe::Peripheral& peripheral, const
             std::to_string(RECONNECT_ATTEMPTS) + " attempts.",
         true);
     return false;
+}
+
+bool Bluetooth::setupGloveNotifications() {
+    bool success = glove.notify(gloveSensorUUID, gyroUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToGyroStorage(payload);});
+    success = success && glove.notify(gloveSensorUUID, accelUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToAccelStorage(payload);});
+    success = success && glove.notify(gloveSensorUUID, spo2UUID, [this](SimpleBLE::ByteArray payload){this->addMessageToSpo2Storage(payload);});
+    success = success && glove.notify(gloveSensorUUID, flexUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToFlexStorage(payload);});
+
+    if(!success){
+        Logger::instance().error("Bluetooth", "Failed to set up glove notifications.", false);
+    }
+
+    return success;
+}
+
+bool Bluetooth::setupGloveDisconnectCallback() {
+    return glove.set_callback_on_disconnected([this](){this->requestGloveReconnect();});
 }
 
 void Bluetooth::addMessageToGyroStorage(SimpleBLE::ByteArray payload) {
@@ -195,30 +215,68 @@ void Bluetooth::addMessageToForceStorage(SimpleBLE::ByteArray payload) {
 }
 
 
-void Bluetooth::reconnect(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName){
+void Bluetooth::requestGloveReconnect(){
+    gloveReconnectRequested.store(true);
+}
+
+void Bluetooth::serviceReconnects(){
+    if(!gloveReconnectRequested.load()){
+        return;
+    }
+
+    std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
+    if(!gloveReconnectRequested.load()){
+        return;
+    }
+
+    auto gloveConnected = glove.is_connected();
+    if(gloveConnected.has_value() && gloveConnected.value()){
+        if(setupGloveNotifications()){
+            gloveReconnectRequested.store(false);
+        }
+        return;
+    }
+
+    reconnectGlove();
+}
+
+bool Bluetooth::reconnectGlove(){
     Logger::instance().warn("Bluetooth",
-                            std::string("Disconnected from ") + peripheralName +
-                                ". Attempting reconnect.",
+                            "Disconnected from glove. Attempting reconnect.",
                             true);
 
     for(int i = 0; i < RECONNECT_ATTEMPTS; i++){
-        if(peripheral.connect()) {
+        const int reconnectAttemptNumber = i + 1;
+
+        Logger::instance().info(
+            "Bluetooth",
+            "Bluetooth reconnect attempt " + std::to_string(reconnectAttemptNumber) +
+                "/" + std::to_string(RECONNECT_ATTEMPTS) + " for glove.",
+            true);
+
+        if(glove.connect() && setupGloveNotifications()) {
+            gloveReconnectRequested.store(false);
             Logger::instance().info("Bluetooth",
-                                    std::string("Reconnected to ") + peripheralName + ".",
+                                    "Reconnected to glove.",
                                     true);
-            return;
+            return true;
         }
     }
 
     Logger::instance().error("Bluetooth",
-                             std::string("Reconnect failed for ") + peripheralName + ".",
+                             "Reconnect failed for glove.",
                              true);
+    return false;
 
 }
 
 
 // This will need to be extended for the gripper (one gripper enums are completed)
 bool Bluetooth::read(const Endpoints& endpoint, std::vector<uint8_t>& message){
+    if(endpoint == Endpoints::IMU_GYRO_CHAR){
+        serviceReconnects();
+    }
+
     bool success = false;
 
     switch(endpoint){
@@ -262,11 +320,14 @@ bool Bluetooth::readMessageStorage(std::mutex& mutex, std::queue<std::vector<uin
 
 
 bool Bluetooth::write(const Endpoints& endpoint, std::vector<uint8_t>& message) {
+    serviceReconnects();
 
     bool success = false;
     if(endpoint == Endpoints::COMMAND_CHAR_GLOVE){
+        std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
         success = glove.write_request(gloveCommandUUID, gloveCommandCharUUID, message);
     } else if (endpoint == Endpoints::COMMAND_CHAR_GRIPPER){
+        std::lock_guard<std::mutex> gripperGuard(gripperAccessMutex);
         success = gripper.write_request(gripperCommandUUID, gripperCommandCharUUID, message);
     }
 
@@ -278,6 +339,9 @@ bool Bluetooth::write(const Endpoints& endpoint, std::vector<uint8_t>& message) 
 }
 
 bool Bluetooth::isConnected(){
+    serviceReconnects();
+
+    std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
     auto gloveConnected = glove.is_connected();
     // auto gripperConnected = gripper.is_connected();
 

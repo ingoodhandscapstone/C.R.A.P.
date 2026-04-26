@@ -3,7 +3,7 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-const int WristOrientationProcessor::CALIBRATION_SAMPLE_COUNT = 100;
+const int WristOrientationProcessor::CALIBRATION_SAMPLE_COUNT = 10;
 const Eigen::Vector3d WristOrientationProcessor::GRAVITY(0.0, 0.0, -9.81);
 const float WristOrientationProcessor::VELOCITY_VARIANCE = 0.0f;
 const float WristOrientationProcessor::POSITION_VARIANCE = 0.0f;

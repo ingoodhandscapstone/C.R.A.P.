@@ -12,6 +12,7 @@
 #include <queue>
 #include <cstdint>
 #include <mutex>
+#include <atomic>
 
 
 
@@ -66,6 +67,7 @@ class Bluetooth : public Communication {
 
     std::mutex gloveAccessMutex;
     std::mutex gripperAccessMutex;
+    std::atomic_bool gloveReconnectRequested;
 
 
     public:
@@ -84,7 +86,8 @@ class Bluetooth : public Communication {
             flexDataMutex(),
             forceDataMutex(),
             gloveAccessMutex(),
-            gripperAccessMutex() {}
+            gripperAccessMutex(),
+            gloveReconnectRequested(false) {}
 
         bool initialize();
         bool read(const Endpoints& endpoint, std::vector<uint8_t>& message) override;
@@ -104,7 +107,11 @@ class Bluetooth : public Communication {
                                const char * peripheralName,
                                SimpleBLE::Safe::Peripheral& peripheral);
         bool connectPeripheral(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName);
-        void reconnect(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName);
+        bool setupGloveNotifications();
+        bool setupGloveDisconnectCallback();
+        void requestGloveReconnect();
+        void serviceReconnects();
+        bool reconnectGlove();
         bool readMessageStorage(std::mutex& mutex, std::queue<std::vector<uint8_t>>& messageStorage, std::vector<uint8_t>& message);
         
 

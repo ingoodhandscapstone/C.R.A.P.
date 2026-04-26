@@ -210,7 +210,7 @@ bool MQTTWorker::connectAndSubscribe(){
         Logger::instance().info("MQTTWorker",
                                 "MQTT connect attempt " + std::to_string(attemptNumber) + "/" +
                                     std::to_string(MAX_RECONNECT_ATTEMPTS),
-                                false);
+                                true);
 
         bool connected = false;
         {
@@ -222,7 +222,7 @@ bool MQTTWorker::connectAndSubscribe(){
             Logger::instance().info("MQTTWorker",
                                     "MQTT connect succeeded on attempt " +
                                         std::to_string(attemptNumber) + ".",
-                                    false);
+                                    true);
             break;
         }
 

@@ -3,6 +3,8 @@
 
 void JointRomProcessor::initialize(ResistiveSensorConfig * config){
     this->config = config;
+
+    setNumberOfSamples(4);
 }
 
 
