@@ -11,7 +11,7 @@ uint32_t SensorProcessingLaneWorker::calibrationEpochCounter = 0;
 uint32_t SensorProcessingLaneWorker::calibrationEpochJoinCount = 0;
 uint32_t SensorProcessingLaneWorker::calibrationEpochRequiredCount = 0;
 bool SensorProcessingLaneWorker::calibrationEpochOpen = false;
-const std::chrono::milliseconds SensorProcessingLaneWorker::CALIBRATION_TIMEOUT_MS(30000);
+const std::chrono::milliseconds SensorProcessingLaneWorker::CALIBRATION_TIMEOUT_MS(60000);
 
 namespace {
 const char * processingGroupToString(SensorProcessingLaneWorker::ProcessingGroup group){

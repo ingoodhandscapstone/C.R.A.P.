@@ -3,6 +3,58 @@
 #include "Logger.h"
 #include "PahoMQTTClient.h"
 
+namespace {
+const char * commandToString(SessionCommand command){
+    switch(command){
+        case SessionCommand::NONE:
+            return "NONE";
+        case SessionCommand::SESSION_CONFIG_WRIST:
+            return "SESSION_CONFIG_WRIST";
+        case SessionCommand::SESSION_CONFIG_POINTER:
+            return "SESSION_CONFIG_POINTER";
+        case SessionCommand::SESSION_CONFIG_SPO2:
+            return "SESSION_CONFIG_SPO2";
+        case SessionCommand::SESSION_START:
+            return "SESSION_START";
+        case SessionCommand::SESSION_STOP:
+            return "SESSION_STOP";
+        case SessionCommand::CALIBRATE_SESSION:
+            return "CALIBRATE_SESSION";
+        case SessionCommand::CALIBRATION_IN_PROGRESS:
+            return "CALIBRATION_IN_PROGRESS";
+        case SessionCommand::CALIBRATION_COMPLETED:
+            return "CALIBRATION_COMPLETED";
+        case SessionCommand::SESSION_CONFIG_MIDDLE:
+            return "SESSION_CONFIG_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_RING:
+            return "SESSION_CONFIG_RING";
+        case SessionCommand::SESSION_CONFIG_PINKY:
+            return "SESSION_CONFIG_PINKY";
+        case SessionCommand::SESSION_CONFIG_THUMB:
+            return "SESSION_CONFIG_THUMB";
+        case SessionCommand::SESSION_CONFIG_POINTER_MIDDLE:
+            return "SESSION_CONFIG_POINTER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_POINTER_WRIST:
+            return "SESSION_CONFIG_POINTER_WRIST";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_POINTER:
+            return "SESSION_CONFIG_GRIPPER_POINTER";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_MIDDLE:
+            return "SESSION_CONFIG_GRIPPER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_RING:
+            return "SESSION_CONFIG_GRIPPER_RING";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_PINKY:
+            return "SESSION_CONFIG_GRIPPER_PINKY";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_THUMB:
+            return "SESSION_CONFIG_GRIPPER_THUMB";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_POINTER_MIDDLE:
+            return "SESSION_CONFIG_GRIPPER_POINTER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_ALL:
+            return "SESSION_CONFIG_GRIPPER_ALL";
+    }
+
+    return "UNKNOWN";
+}
+}
 
 const int MQTTWorker::MAX_RECONNECT_ATTEMPTS = 10;
 const int MQTTWorker::MAX_PUBLISH_ATTEMPTS = 10;
@@ -172,9 +224,10 @@ void MQTTWorker::run(std::stop_token stopToken){
 
 
 void MQTTWorker::onMessageArrived(const std::string& topic, const std::string& payload){
-    (void)topic;
-
     if(payload.empty()){
+        Logger::instance().warn("MQTTWorker",
+                                "Received empty MQTT payload topic='" + topic + "'.",
+                                true);
         return;
     }
 
@@ -182,15 +235,32 @@ void MQTTWorker::onMessageArrived(const std::string& topic, const std::string& p
     try {
         value = static_cast<unsigned int>(std::stoul(payload));
     } catch (...) {
+        Logger::instance().warn("MQTTWorker",
+                                "Received non-numeric MQTT payload topic='" + topic +
+                                    "' payload='" + payload + "'.",
+                                true);
         return;
     }
 
     if(value >= NUM_OF_COMMANDS){
+        Logger::instance().warn("MQTTWorker",
+                                "Received out-of-range MQTT command topic='" + topic +
+                                    "' payload='" + payload + "' value=" +
+                                    std::to_string(value) + ".",
+                                true);
         return;
     }
 
+    const SessionCommand command = static_cast<SessionCommand>(value);
+    Logger::instance().info("MQTTWorker",
+                            "Received MQTT command topic='" + topic +
+                                "' payload='" + payload + "' value=" +
+                                std::to_string(value) + " command=" +
+                                commandToString(command) + ".",
+                            true);
+
     std::lock_guard commandGuard(*mqttForwardCommandMutex);
-    mqttForwardCommandQueue->push(static_cast<SessionCommand>(value));
+    mqttForwardCommandQueue->push(command);
 }
 
 

@@ -1,5 +1,7 @@
 #include "ComWorker.h"
 
+#include "Logger.h"
+
 const int ComWorker::DATA_ENDPOINTS_COUNT = 5;
 
 namespace {
@@ -13,6 +15,57 @@ uint32_t readUint32(const std::vector<uint8_t>& bytes, size_t startIndex) {
            (static_cast<uint32_t>(bytes[startIndex + 2]) << 8) |
            (static_cast<uint32_t>(bytes[startIndex + 1]) << 16) |
            (static_cast<uint32_t>(bytes[startIndex]) << 24);
+}
+
+const char * commandToString(SessionCommand command){
+    switch(command){
+        case SessionCommand::NONE:
+            return "NONE";
+        case SessionCommand::SESSION_CONFIG_WRIST:
+            return "SESSION_CONFIG_WRIST";
+        case SessionCommand::SESSION_CONFIG_POINTER:
+            return "SESSION_CONFIG_POINTER";
+        case SessionCommand::SESSION_CONFIG_SPO2:
+            return "SESSION_CONFIG_SPO2";
+        case SessionCommand::SESSION_START:
+            return "SESSION_START";
+        case SessionCommand::SESSION_STOP:
+            return "SESSION_STOP";
+        case SessionCommand::CALIBRATE_SESSION:
+            return "CALIBRATE_SESSION";
+        case SessionCommand::CALIBRATION_IN_PROGRESS:
+            return "CALIBRATION_IN_PROGRESS";
+        case SessionCommand::CALIBRATION_COMPLETED:
+            return "CALIBRATION_COMPLETED";
+        case SessionCommand::SESSION_CONFIG_MIDDLE:
+            return "SESSION_CONFIG_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_RING:
+            return "SESSION_CONFIG_RING";
+        case SessionCommand::SESSION_CONFIG_PINKY:
+            return "SESSION_CONFIG_PINKY";
+        case SessionCommand::SESSION_CONFIG_THUMB:
+            return "SESSION_CONFIG_THUMB";
+        case SessionCommand::SESSION_CONFIG_POINTER_MIDDLE:
+            return "SESSION_CONFIG_POINTER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_POINTER_WRIST:
+            return "SESSION_CONFIG_POINTER_WRIST";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_POINTER:
+            return "SESSION_CONFIG_GRIPPER_POINTER";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_MIDDLE:
+            return "SESSION_CONFIG_GRIPPER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_RING:
+            return "SESSION_CONFIG_GRIPPER_RING";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_PINKY:
+            return "SESSION_CONFIG_GRIPPER_PINKY";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_THUMB:
+            return "SESSION_CONFIG_GRIPPER_THUMB";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_POINTER_MIDDLE:
+            return "SESSION_CONFIG_GRIPPER_POINTER_MIDDLE";
+        case SessionCommand::SESSION_CONFIG_GRIPPER_ALL:
+            return "SESSION_CONFIG_GRIPPER_ALL";
+    }
+
+    return "UNKNOWN";
 }
 }
 
@@ -126,6 +179,12 @@ void ComWorker::run(std::stop_token stopToken){
             }
 
             std::vector<uint8_t> message{static_cast<uint8_t>(command)};
+            Logger::instance().info("ComWorker",
+                                    std::string("Sending command over comm value=") +
+                                        std::to_string(static_cast<int>(message.front())) +
+                                        " command=" + commandToString(command) +
+                                        " endpoints=gripper,glove.",
+                                    true);
 
             // I can write to both as long as the session config for gripper is different than for glove (which it is)
             // This requires that the received values are identical in meaning to COMMANDS, WHICH THEY SHOULD BE
