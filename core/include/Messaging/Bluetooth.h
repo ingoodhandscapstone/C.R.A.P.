@@ -14,6 +14,10 @@
 #include <mutex>
 #include <atomic>
 
+#ifndef BLUETOOTH_ENABLE_GRIPPER
+#define BLUETOOTH_ENABLE_GRIPPER 1
+#endif
+
 
 
 class Bluetooth : public Communication {
@@ -68,6 +72,7 @@ class Bluetooth : public Communication {
     std::mutex gloveAccessMutex;
     std::mutex gripperAccessMutex;
     std::atomic_bool gloveReconnectRequested;
+    std::atomic_bool gripperReconnectRequested;
 
 
     public:
@@ -87,7 +92,8 @@ class Bluetooth : public Communication {
             forceDataMutex(),
             gloveAccessMutex(),
             gripperAccessMutex(),
-            gloveReconnectRequested(false) {}
+            gloveReconnectRequested(false),
+            gripperReconnectRequested(false) {}
 
         bool initialize();
         bool read(const Endpoints& endpoint, std::vector<uint8_t>& message) override;
@@ -108,10 +114,14 @@ class Bluetooth : public Communication {
                                SimpleBLE::Safe::Peripheral& peripheral);
         bool connectPeripheral(SimpleBLE::Safe::Peripheral& peripheral, const char * peripheralName);
         bool setupGloveNotifications();
+        bool setupGripperNotifications();
         bool setupGloveDisconnectCallback();
+        bool setupGripperDisconnectCallback();
         void requestGloveReconnect();
+        void requestGripperReconnect();
         void serviceReconnects();
         bool reconnectGlove();
+        bool reconnectGripper();
         bool readMessageStorage(std::mutex& mutex, std::queue<std::vector<uint8_t>>& messageStorage, std::vector<uint8_t>& message);
         
 

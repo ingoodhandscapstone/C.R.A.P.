@@ -10,11 +10,13 @@ add_library(com_worker OBJECT src/Workers/ComWorker.cpp)
 add_library(sensor_processing_lane_worker OBJECT src/Workers/SensorProcessingLaneWorker.cpp)
 add_library(mqtt_worker OBJECT src/Workers/MQTTWorker.cpp)
 
+option(ENABLE_GRIPPER_BLUETOOTH "Connect to the gripper during Bluetooth initialization." ON)
 
 
 target_include_directories(blood_oxygen_processor PUBLIC include/Processing)
 target_include_directories(accel_gravity_measure_model PUBLIC include/Processing)
 target_include_directories(bluetooth PUBLIC include/Messaging)
+target_compile_definitions(bluetooth PUBLIC BLUETOOTH_ENABLE_GRIPPER=$<BOOL:${ENABLE_GRIPPER_BLUETOOTH}>)
 target_include_directories(paho_mqtt_client PUBLIC include/Messaging)
 target_include_directories(finger_abduction_processor PUBLIC include/Processing)
 target_include_directories(force_processing PUBLIC include/Processing)

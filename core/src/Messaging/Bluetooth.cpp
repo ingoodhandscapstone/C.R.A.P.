@@ -8,7 +8,7 @@ const int Bluetooth::RECONNECT_ATTEMPTS = 10;
 const int Bluetooth::SCAN_TIMEOUT_MS = 4000;
 
 const SimpleBLE::BluetoothAddress Bluetooth::GLOVE_ADDRESS = SimpleBLE::BluetoothAddress("C2:12:34:56:78:9A");
-const SimpleBLE::BluetoothAddress Bluetooth::GRIPPER_ADDRESS = SimpleBLE::BluetoothAddress();
+const SimpleBLE::BluetoothAddress Bluetooth::GRIPPER_ADDRESS = SimpleBLE::BluetoothAddress("C2:12:34:56:78:9B");
 
 // Glove (no logging)
 // Service
@@ -25,13 +25,13 @@ const SimpleBLE::BluetoothUUID Bluetooth::gloveCommandCharUUID = SimpleBLE::Blue
 
 // Gripper (no logging)
 // Service
-const SimpleBLE::BluetoothUUID Bluetooth::gripperCommandUUID = SimpleBLE::BluetoothUUID(); 
-const SimpleBLE::BluetoothUUID Bluetooth::gripperSensorUUID = SimpleBLE::BluetoothUUID();
+const SimpleBLE::BluetoothUUID Bluetooth::gripperCommandUUID = SimpleBLE::BluetoothUUID("20d54f7d-de91-4cb3-9298-6144c02f8e38"); 
+const SimpleBLE::BluetoothUUID Bluetooth::gripperSensorUUID = SimpleBLE::BluetoothUUID("9f185e32-8c9b-4e75-a4ad-fd38a798f267");
 
 // Gripper (no logging)
 // Characteristics
-const SimpleBLE::BluetoothUUID Bluetooth::gripperCommandCharUUID = SimpleBLE::BluetoothUUID();
-const SimpleBLE::BluetoothUUID Bluetooth::forceUUID = SimpleBLE::BluetoothUUID();
+const SimpleBLE::BluetoothUUID Bluetooth::gripperCommandCharUUID = SimpleBLE::BluetoothUUID("8b57dd02-4fd4-4d61-ad77-1feaa12f4f4e");
+const SimpleBLE::BluetoothUUID Bluetooth::forceUUID = SimpleBLE::BluetoothUUID("2f1f7c3a-9d27-4d21-8f4e-2cb8a7f15d42");
 
 
 bool Bluetooth::initialize(){
@@ -47,22 +47,32 @@ bool Bluetooth::initialize(){
     adapter = adapters.value()[0];
 
     bool success = scanForPeripheral(GLOVE_ADDRESS, "glove", glove);
-    // success = success && scanForPeripheral(GRIPPER_ADDRESS, "gripper", gripper);
+#if BLUETOOTH_ENABLE_GRIPPER
+    success = success && scanForPeripheral(GRIPPER_ADDRESS, "gripper", gripper);
+#else
+    Logger::instance().warn("Bluetooth", "Gripper Bluetooth support is disabled for this build.", true);
+#endif
     if(!success){
         return false;
     }
 
     success = connectPeripheral(glove, "glove");
-    // success = success && connectPeripheral(gripper, "gripper");
+#if BLUETOOTH_ENABLE_GRIPPER
+    success = success && connectPeripheral(gripper, "gripper");
+#endif
     if(!success){
         return false;
     }
 
     success = success && setupGloveNotifications();
-    //success = success && gripper.notify(gripperSensorUUID, forceUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToForceStorage(payload);});
+#if BLUETOOTH_ENABLE_GRIPPER
+    success = success && setupGripperNotifications();
+#endif
 
     success = success && setupGloveDisconnectCallback();
-   // success = success && gripper.set_callback_on_disconnected([this](){this->reconnect(gripper, "gripper");});
+#if BLUETOOTH_ENABLE_GRIPPER
+    success = success && setupGripperDisconnectCallback();
+#endif
 
     if(!success){
         Logger::instance().error("Bluetooth", "Bluetooth setup failed after initial connection.", false);
@@ -185,8 +195,22 @@ bool Bluetooth::setupGloveNotifications() {
     return success;
 }
 
+bool Bluetooth::setupGripperNotifications() {
+    bool success = gripper.notify(gripperSensorUUID, forceUUID, [this](SimpleBLE::ByteArray payload){this->addMessageToForceStorage(payload);});
+
+    if(!success){
+        Logger::instance().error("Bluetooth", "Failed to set up gripper notifications.", false);
+    }
+
+    return success;
+}
+
 bool Bluetooth::setupGloveDisconnectCallback() {
     return glove.set_callback_on_disconnected([this](){this->requestGloveReconnect();});
+}
+
+bool Bluetooth::setupGripperDisconnectCallback() {
+    return gripper.set_callback_on_disconnected([this](){this->requestGripperReconnect();});
 }
 
 void Bluetooth::addMessageToGyroStorage(SimpleBLE::ByteArray payload) {
@@ -219,25 +243,42 @@ void Bluetooth::requestGloveReconnect(){
     gloveReconnectRequested.store(true);
 }
 
+void Bluetooth::requestGripperReconnect(){
+#if BLUETOOTH_ENABLE_GRIPPER
+    gripperReconnectRequested.store(true);
+#endif
+}
+
 void Bluetooth::serviceReconnects(){
-    if(!gloveReconnectRequested.load()){
-        return;
-    }
-
-    std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
-    if(!gloveReconnectRequested.load()){
-        return;
-    }
-
-    auto gloveConnected = glove.is_connected();
-    if(gloveConnected.has_value() && gloveConnected.value()){
-        if(setupGloveNotifications()){
-            gloveReconnectRequested.store(false);
+    if(gloveReconnectRequested.load()){
+        std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
+        if(gloveReconnectRequested.load()){
+            auto gloveConnected = glove.is_connected();
+            if(gloveConnected.has_value() && gloveConnected.value()){
+                if(setupGloveNotifications()){
+                    gloveReconnectRequested.store(false);
+                }
+            } else {
+                reconnectGlove();
+            }
         }
-        return;
     }
 
-    reconnectGlove();
+#if BLUETOOTH_ENABLE_GRIPPER
+    if(gripperReconnectRequested.load()){
+        std::lock_guard<std::mutex> gripperGuard(gripperAccessMutex);
+        if(gripperReconnectRequested.load()){
+            auto gripperConnected = gripper.is_connected();
+            if(gripperConnected.has_value() && gripperConnected.value()){
+                if(setupGripperNotifications()){
+                    gripperReconnectRequested.store(false);
+                }
+            } else {
+                reconnectGripper();
+            }
+        }
+    }
+#endif
 }
 
 bool Bluetooth::reconnectGlove(){
@@ -270,10 +311,40 @@ bool Bluetooth::reconnectGlove(){
 
 }
 
+bool Bluetooth::reconnectGripper(){
+    Logger::instance().warn("Bluetooth",
+                            "Disconnected from gripper. Attempting reconnect.",
+                            true);
+
+    for(int i = 0; i < RECONNECT_ATTEMPTS; i++){
+        const int reconnectAttemptNumber = i + 1;
+
+        Logger::instance().info(
+            "Bluetooth",
+            "Bluetooth reconnect attempt " + std::to_string(reconnectAttemptNumber) +
+                "/" + std::to_string(RECONNECT_ATTEMPTS) + " for gripper.",
+            true);
+
+        if(gripper.connect() && setupGripperNotifications()) {
+            gripperReconnectRequested.store(false);
+            Logger::instance().info("Bluetooth",
+                                    "Reconnected to gripper.",
+                                    true);
+            return true;
+        }
+    }
+
+    Logger::instance().error("Bluetooth",
+                             "Reconnect failed for gripper.",
+                             true);
+    return false;
+
+}
+
 
 // This will need to be extended for the gripper (one gripper enums are completed)
 bool Bluetooth::read(const Endpoints& endpoint, std::vector<uint8_t>& message){
-    if(endpoint == Endpoints::IMU_GYRO_CHAR){
+    if(endpoint == Endpoints::IMU_GYRO_CHAR || endpoint == Endpoints::FORCE_CHAR){
         serviceReconnects();
     }
 
@@ -327,8 +398,12 @@ bool Bluetooth::write(const Endpoints& endpoint, std::vector<uint8_t>& message) 
         std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
         success = glove.write_request(gloveCommandUUID, gloveCommandCharUUID, message);
     } else if (endpoint == Endpoints::COMMAND_CHAR_GRIPPER){
+#if BLUETOOTH_ENABLE_GRIPPER
         std::lock_guard<std::mutex> gripperGuard(gripperAccessMutex);
         success = gripper.write_request(gripperCommandUUID, gripperCommandCharUUID, message);
+#else
+        Logger::instance().warn("Bluetooth", "Skipping gripper command because gripper Bluetooth support is disabled.", false);
+#endif
     }
 
     return success;
@@ -343,9 +418,14 @@ bool Bluetooth::isConnected(){
 
     std::lock_guard<std::mutex> gloveGuard(gloveAccessMutex);
     auto gloveConnected = glove.is_connected();
-    // auto gripperConnected = gripper.is_connected();
 
+#if !BLUETOOTH_ENABLE_GRIPPER
     return gloveConnected.has_value() && gloveConnected.value();
-    // return gloveConnected.has_value() && gloveConnected.value()
-    //         && gripperConnected.has_value() && gripperConnected.value();
+#else
+    std::lock_guard<std::mutex> gripperGuard(gripperAccessMutex);
+    auto gripperConnected = gripper.is_connected();
+
+    return gloveConnected.has_value() && gloveConnected.value()
+            && gripperConnected.has_value() && gripperConnected.value();
+#endif
 }

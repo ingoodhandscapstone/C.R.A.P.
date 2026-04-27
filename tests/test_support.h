@@ -379,6 +379,19 @@ inline void enqueueImuCalibrationSamples(WorkerRig& rig,
     }
 }
 
+inline void enqueueFlexCalibrationSamples(WorkerRig& rig,
+                                          const std::vector<SensorID>& ids,
+                                          uint32_t startTimestamp,
+                                          uint32_t value,
+                                          int sampleCount = 4) {
+    uint32_t ts = startTimestamp;
+    for (int i = 0; i < sampleCount; i++) {
+        for (const SensorID id : ids) {
+            rig.pushSensor(makeFlexElem(id, ts++, value));
+        }
+    }
+}
+
 } // namespace test_support
 
 #endif

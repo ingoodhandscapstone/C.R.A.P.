@@ -16,6 +16,72 @@ using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
 
+class RecordingMQTTClient : public MQTTClient {
+  public:
+    struct PublishedMessage {
+        std::string topic;
+        std::string payload;
+        int qos;
+    };
+
+    bool connectResult = true;
+    bool subscribeResult = true;
+    bool publishResult = true;
+    bool connected = true;
+
+    bool connect() override {
+        connected = connectResult;
+        return connectResult;
+    }
+
+    bool subscribe(const std::string& topic, int qos) override {
+        subscribedTopic = topic;
+        subscribedQos = qos;
+        return subscribeResult;
+    }
+
+    bool publish(const std::string& topic, const std::string& payload, int qos) override {
+        if(publishResult){
+            std::lock_guard lock(publishedMutex);
+            publishedMessages.push_back(PublishedMessage{topic, payload, qos});
+        }
+        return publishResult;
+    }
+
+    bool isConnected() override {
+        return connected;
+    }
+
+    void setMessageHandler(MessageHandler handler) override {
+        messageHandler = handler;
+    }
+
+    size_t publishedCount() const {
+        std::lock_guard lock(publishedMutex);
+        return publishedMessages.size();
+    }
+
+    size_t publishedPayloadCount(const std::string& payload) const {
+        std::lock_guard lock(publishedMutex);
+        size_t count = 0;
+        for(const auto& message : publishedMessages){
+            if(message.payload == payload){
+                count++;
+            }
+        }
+        return count;
+    }
+
+  private:
+    mutable std::mutex publishedMutex;
+
+  public:
+    std::vector<PublishedMessage> publishedMessages;
+    std::string subscribedTopic;
+    int subscribedQos = 0;
+    MessageHandler messageHandler;
+};
+
 class ComWorkerFixture : public ::testing::Test {
   protected:
     std::queue<SessionCommand> mqttForwardCommandQueue;
@@ -263,9 +329,12 @@ TEST_F(FlexLaneFixture, PointerMiddleCalibrationRequiresBothFingerSets) {
 TEST_F(FlexLaneFixture, RunningOutputsDataAndStopsOnSessionStop) {
     rig.pushCommand(SessionCommand::SESSION_CONFIG_POINTER);
     rig.pushCommand(SessionCommand::CALIBRATE_SESSION);
-    rig.pushSensor(makeFlexElem(SensorID::POINTER_MCP_FLEX, 1u, 100u));
-    rig.pushSensor(makeFlexElem(SensorID::POINTER_PIP_FLEX, 2u, 100u));
-    rig.pushSensor(makeFlexElem(SensorID::POINTER_DIP_FLEX, 3u, 100u));
+    enqueueFlexCalibrationSamples(rig,
+                                  {SensorID::POINTER_MCP_FLEX,
+                                   SensorID::POINTER_PIP_FLEX,
+                                   SensorID::POINTER_DIP_FLEX},
+                                  1u,
+                                  100u);
 
     std::jthread thread([&](std::stop_token stopToken) { rig.worker.run(stopToken); });
 
@@ -290,9 +359,12 @@ TEST_F(FlexLaneFixture, RunningOutputsDataAndStopsOnSessionStop) {
 TEST_F(FlexLaneFixture, ResetSeparatesSessionConfigurations) {
     rig.pushCommand(SessionCommand::SESSION_CONFIG_POINTER);
     rig.pushCommand(SessionCommand::CALIBRATE_SESSION);
-    rig.pushSensor(makeFlexElem(SensorID::POINTER_MCP_FLEX, 1u, 100u));
-    rig.pushSensor(makeFlexElem(SensorID::POINTER_PIP_FLEX, 2u, 100u));
-    rig.pushSensor(makeFlexElem(SensorID::POINTER_DIP_FLEX, 3u, 100u));
+    enqueueFlexCalibrationSamples(rig,
+                                  {SensorID::POINTER_MCP_FLEX,
+                                   SensorID::POINTER_PIP_FLEX,
+                                   SensorID::POINTER_DIP_FLEX},
+                                  1u,
+                                  100u);
 
     std::jthread thread([&](std::stop_token stopToken) { rig.worker.run(stopToken); });
 
@@ -308,8 +380,11 @@ TEST_F(FlexLaneFixture, ResetSeparatesSessionConfigurations) {
 
     rig.pushCommand(SessionCommand::SESSION_CONFIG_THUMB);
     rig.pushCommand(SessionCommand::CALIBRATE_SESSION);
-    rig.pushSensor(makeFlexElem(SensorID::THUMB_MCP_FLEX, 30u, 100u));
-    rig.pushSensor(makeFlexElem(SensorID::THUMB_PIP_FLEX, 31u, 100u));
+    enqueueFlexCalibrationSamples(rig,
+                                  {SensorID::THUMB_MCP_FLEX,
+                                   SensorID::THUMB_PIP_FLEX},
+                                  30u,
+                                  100u);
     ASSERT_TRUE(waitUntil([&]() { return rig.calibrationStatusSize() >= 2u; }));
 
     rig.pushCommand(SessionCommand::SESSION_START);
@@ -412,7 +487,7 @@ TEST_F(ImuForceLaneFixture, WristSessionOutputsXAxisAndYAxisData) {
     ASSERT_TRUE(rig.popForward(second));
     thread.request_stop();
 
-    EXPECT_EQ(first.id, SensorID::HAND_IMU);
+    EXPECT_EQ(first.id, SensorID::HAND_IMU_X);
     EXPECT_EQ(second.id, SensorID::HAND_IMU_Y);
 }
 
@@ -452,14 +527,10 @@ class MQTTCalibrationFixture : public ::testing::Test {
     std::mutex imuMutex;
     std::mutex calibrationMutex;
 
-    MockMQTTClient mockClient;
-    MQTTWorker worker{&mockClient};
+    RecordingMQTTClient mqttClient;
+    MQTTWorker worker{&mqttClient};
 
     void SetUp() override {
-        EXPECT_CALL(mockClient, setMessageHandler(_)).Times(1);
-        EXPECT_CALL(mockClient, connect()).Times(1).WillOnce(Return(true));
-        EXPECT_CALL(mockClient, subscribe(_, _)).Times(1).WillOnce(Return(true));
-        ON_CALL(mockClient, isConnected()).WillByDefault(Return(true));
         ASSERT_TRUE(worker.initialize(&mqttForwardCommandQueue,
                                       &flexQueue,
                                       &imuQueue,
@@ -479,40 +550,40 @@ class MQTTCalibrationFixture : public ::testing::Test {
 };
 
 TEST_F(MQTTCalibrationFixture, RequiredCountOnePublishesImmediately) {
-    EXPECT_CALL(mockClient, publish(_, std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED)), _))
-        .Times(1)
-        .WillOnce(Return(true));
+    const std::string completionPayload = std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED));
 
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{1u, 1u});
     runWorkerForDrain();
+
+    EXPECT_EQ(mqttClient.publishedPayloadCount(completionPayload), 1u);
 }
 
 TEST_F(MQTTCalibrationFixture, RequiredCountTwoPublishesOnlyAfterSecondMessageSameEpoch) {
-    EXPECT_CALL(mockClient, publish(_, std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED)), _))
-        .Times(1)
-        .WillOnce(Return(true));
+    const std::string completionPayload = std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED));
 
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{5u, 2u});
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{5u, 2u});
     runWorkerForDrain();
+
+    EXPECT_EQ(mqttClient.publishedPayloadCount(completionPayload), 1u);
 }
 
 TEST_F(MQTTCalibrationFixture, RequiredCountZeroIsIgnored) {
-    EXPECT_CALL(mockClient, publish(_, _, _)).Times(0);
-
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{2u, 0u});
     runWorkerForDrain();
+
+    EXPECT_EQ(mqttClient.publishedCount(), 0u);
 }
 
 TEST_F(MQTTCalibrationFixture, OutOfOrderEpochResetsTrackingAndStillRequiresCount) {
-    EXPECT_CALL(mockClient, publish(_, std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED)), _))
-        .Times(1)
-        .WillOnce(Return(true));
+    const std::string completionPayload = std::to_string(static_cast<int>(SessionCommand::CALIBRATION_COMPLETED));
 
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{10u, 2u});
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{11u, 2u});
     pushLocked(calibrationMutex, calibrationQueue, CalibrationStatusMessage{11u, 2u});
     runWorkerForDrain();
+
+    EXPECT_EQ(mqttClient.publishedPayloadCount(completionPayload), 1u);
 }
 
 } // namespace

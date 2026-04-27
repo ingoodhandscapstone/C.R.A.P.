@@ -26,8 +26,20 @@
 namespace {
 constexpr float FLEX_NOISE_FLOOR = 0.0f;
 constexpr float FLEX_ADC_LSB_VOLTS = 0.002f; // 1 mV/LSB
-constexpr float FLEX_DEADBAND = 0.0f; // drift
+constexpr float FLEX_DEADBAND = 0.0002f; // 0.2 mV drift threshold
 constexpr float FLEX_CALIBRATION_VOLTAGE = 0.0f;
+constexpr double PI = 3.14159265358979323846;
+constexpr double GYRO_ANGLE_RANDOM_WALK_RAD_PER_SQRT_SEC = 1.14 * PI / 180.0 / 60.0;
+constexpr double GYRO_BIAS_INSTABILITY_RAD_PER_SEC = 17.3 * PI / 180.0 / 3600.0;
+
+const Eigen::Vector3d ACCEL_ORTHO_CORRECTION_BIAS(1594.0, 0.8356, 23.09);
+const Eigen::Matrix3d ACCEL_ORTHO_CORRECTION_MATRIX = [] {
+    Eigen::Matrix3d matrix;
+    matrix << 0.384, -0.0068, -0.001161,
+              -0.00688, 0.7869, -0.0207,
+              -0.00116, -0.020772, 0.7903;
+    return matrix;
+}();
 
 ImuProcessingConfig makeImuConfig(double gyroProcessNoiseStd,
                                   double accelProcessNoiseStd,
@@ -40,8 +52,8 @@ ImuProcessingConfig makeImuConfig(double gyroProcessNoiseStd,
     config.accelProcessNoise = Eigen::Vector3d::Constant(accelProcessNoiseStd);
     config.accelsBiasNoise = Eigen::Vector3d::Constant(accelBiasNoiseStd);
     config.gyroBiasNoise = Eigen::Vector3d::Constant(gyroBiasNoiseStd);
-    config.orthoCorrectionMat = Eigen::Matrix3d::Identity();
-    config.orthoCorrectionBias = Eigen::Vector3d::Zero();
+    config.orthoCorrectionMat = ACCEL_ORTHO_CORRECTION_MATRIX;
+    config.orthoCorrectionBias = ACCEL_ORTHO_CORRECTION_BIAS;
     config.orientationVariance = Eigen::Vector3d::Constant(orientationVariance);
     const double accelMeasurementVariance = accelMeasurementStd * accelMeasurementStd;
     config.accelMeasurementCovariance = Eigen::Matrix3d::Identity() * accelMeasurementVariance;
@@ -50,10 +62,10 @@ ImuProcessingConfig makeImuConfig(double gyroProcessNoiseStd,
 
 ImuProcessingConfig makeHandImuConfig() {
     return makeImuConfig(
-        0.02,  // gyro process noise std (rad/s)
+        GYRO_ANGLE_RANDOM_WALK_RAD_PER_SQRT_SEC, // gyro process noise std
         0.20,  // accel process noise std (m/s^2)
         0.01,  // accel bias noise std (m/s^2)
-        0.001, // gyro bias noise std (rad/s)
+        GYRO_BIAS_INSTABILITY_RAD_PER_SEC, // gyro bias noise std (rad/s)
         0.05,  // orientation variance
         0.35   // accel measurement std (m/s^2)
     );
@@ -61,25 +73,42 @@ ImuProcessingConfig makeHandImuConfig() {
 
 ImuProcessingConfig makeFingerImuConfig() {
     return makeImuConfig(
-        0.03,  // gyro process noise std (rad/s)
+        GYRO_ANGLE_RANDOM_WALK_RAD_PER_SQRT_SEC, // gyro process noise std
         0.25,  // accel process noise std (m/s^2)
         0.015, // accel bias noise std (m/s^2)
-        0.0015,// gyro bias noise std (rad/s)
+        GYRO_BIAS_INSTABILITY_RAD_PER_SEC, // gyro bias noise std (rad/s)
         0.07,  // orientation variance
         0.40   // accel measurement std (m/s^2)
     );
 }
 
-ResistiveSensorConfig makeFlexSensorConfig() {
+ResistiveSensorConfig makeBaseResistiveSensorConfig() {
     ResistiveSensorConfig config;
     config.noiseFloor = FLEX_NOISE_FLOOR;
     config.adcLSB = FLEX_ADC_LSB_VOLTS;
     config.deadband = FLEX_DEADBAND;
     config.calibratePositionVoltage = FLEX_CALIBRATION_VOLTAGE;
+    return config;
+}
 
-    // angle = -16.1*x^2 + 66*x + 18.4
-    config.loadingPieceCoef = {-16.1f, 66.0f, 18.4f};
-    config.unloadingPieceCoef = {-16.1f, 66.0f, 18.4f};
+ResistiveSensorConfig makeMcpFlexSensorConfig() {
+    ResistiveSensorConfig config = makeBaseResistiveSensorConfig();
+    config.loadingPieceCoef = {4.54e-7f, -1.5e-3f, 0.3f};
+    config.unloadingPieceCoef = {7.3e-6f, -2.18e-3f, 0.302f};
+    return config;
+}
+
+ResistiveSensorConfig makePipDipFlexSensorConfig() {
+    ResistiveSensorConfig config = makeBaseResistiveSensorConfig();
+    config.loadingPieceCoef = {15.4f, -64.6f, 81.8f};
+    config.unloadingPieceCoef = {15.4f, -64.6f, 81.8f};
+    return config;
+}
+
+ResistiveSensorConfig makeForceSensorConfig() {
+    ResistiveSensorConfig config = makeBaseResistiveSensorConfig();
+    config.loadingPieceCoef = {-4.62f, 0.235f};
+    config.unloadingPieceCoef = {-4.62f, -0.235f};
     return config;
 }
 }
@@ -111,110 +140,80 @@ ImuProcessingConfig pinkyImuConfig = {
 };
 
 ResistiveSensorConfig pointerMcpFlexConfig = {
-    makeFlexSensorConfig()
+    makeMcpFlexSensorConfig()
 };
 
 ResistiveSensorConfig pointerPipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig pointerDipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig middleMcpFlexConfig = {
-    makeFlexSensorConfig()
+    makeMcpFlexSensorConfig()
 };
 
 ResistiveSensorConfig middlePipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig middleDipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig ringMcpFlexConfig = {
-    makeFlexSensorConfig()
+    makeMcpFlexSensorConfig()
 };
 
 ResistiveSensorConfig ringPipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig ringDipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig pinkyMcpFlexConfig = {
-    makeFlexSensorConfig()
+    makeMcpFlexSensorConfig()
 };
 
 ResistiveSensorConfig pinkyPipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig pinkyDipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig thumbMcpFlexConfig = {
-    makeFlexSensorConfig()
+    makeMcpFlexSensorConfig()
 };
 
 ResistiveSensorConfig thumbPipFlexConfig = {
-    makeFlexSensorConfig()
+    makePipDipFlexSensorConfig()
 };
 
 ResistiveSensorConfig pointerForceConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeForceSensorConfig()
 };
 
 ResistiveSensorConfig middleForceConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeForceSensorConfig()
 };
 
 ResistiveSensorConfig thumbForceConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeForceSensorConfig()
 };
 
 ResistiveSensorConfig ringForceConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeForceSensorConfig()
 };
 
 ResistiveSensorConfig pinkyForceConfig = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    {0.0f, 0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f, 0.0f, 0.0f}
+    makeForceSensorConfig()
 };
-
-
-
-
-
 
 std::unordered_map<SensorID, ImuProcessingConfig> imuConfigs; // Configs used for imus
 std::unordered_map<SensorID, ResistiveSensorConfig> resistiveSensorConfigs; // Configs used for resistive sensors

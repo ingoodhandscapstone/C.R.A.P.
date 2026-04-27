@@ -83,7 +83,7 @@ MQTTWorker::MQTTWorker(MQTTClient * mqttClient) :
     clientAccessMutex(),
     failureStateMutex(),
     ownedMqttClient(nullptr),
-    mqttClient(nullptr),
+    mqttClient(mqttClient),
     workerFailed(false),
     failureReason(),
     calibrationEpochActive(false),
@@ -104,8 +104,10 @@ bool MQTTWorker::initialize(std::queue<SessionCommand> * mqttForwardCommandQueue
                             std::mutex * calibrationStatusMutex) {
     clearFailure();
 
-    ownedMqttClient = std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID);
-    this->mqttClient = ownedMqttClient.get();
+    if(this->mqttClient == nullptr){
+        ownedMqttClient = std::make_unique<PahoMQTTClient>(SERVER_URI, CLIENT_ID);
+        this->mqttClient = ownedMqttClient.get();
+    }
 
     this->mqttForwardCommandQueue = mqttForwardCommandQueue;
     this->flexSPO2ForwardMQTTQueue = flexSPO2ForwardMQTTQueue;

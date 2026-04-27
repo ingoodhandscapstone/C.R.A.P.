@@ -21,9 +21,12 @@ TEST(WorkerThreadedTest, FlexAndImuLanesCanCalibrateConcurrentlyWithSharedCalibr
     imuRig.pushCommand(SessionCommand::SESSION_CONFIG_POINTER);
     imuRig.pushCommand(SessionCommand::CALIBRATE_SESSION);
 
-    flexRig.pushSensor(makeFlexElem(SensorID::POINTER_MCP_FLEX, 1u, 100u));
-    flexRig.pushSensor(makeFlexElem(SensorID::POINTER_PIP_FLEX, 2u, 100u));
-    flexRig.pushSensor(makeFlexElem(SensorID::POINTER_DIP_FLEX, 3u, 100u));
+    enqueueFlexCalibrationSamples(flexRig,
+                                  {SensorID::POINTER_MCP_FLEX,
+                                   SensorID::POINTER_PIP_FLEX,
+                                   SensorID::POINTER_DIP_FLEX},
+                                  1u,
+                                  100u);
 
     enqueueImuCalibrationSamples(imuRig, SensorID::HAND_IMU, 100, 1000u);
     enqueueImuCalibrationSamples(imuRig, SensorID::POINTER_IMU, 100, 2000u);
